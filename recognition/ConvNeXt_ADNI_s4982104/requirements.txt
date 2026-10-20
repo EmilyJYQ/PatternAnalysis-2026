@@ -1,0 +1,2 @@
+# Data manifest and scan-selection stage
+Pillow==12.3.0

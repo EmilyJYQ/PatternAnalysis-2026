@@ -24,3 +24,10 @@ samples.csv
 samples_issues.csv
 manifest_summary.json
 /manifests/
+
+# B3 private scan checks and selection outputs
+/selection_seed42*/
+scan_checks.csv
+selected_scans.csv
+selected_samples.csv
+selection_summary.json

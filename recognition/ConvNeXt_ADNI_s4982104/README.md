@@ -37,7 +37,32 @@ resource budget, risks, and fallback.
 
 ## Environment and usage
 
-TODO: exact dependency versions and verified commands after implementation.
+The data preparation stage uses Python 3.11 and Pillow 12.3.0.
+Verified locally with Python 3.11.15; the recorded Rangpur selection run used
+Python 3.11.13. Model-training dependencies will be added when implemented.
+
+Run these commands from this project directory to create an isolated environment:
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+Use `.venv/bin/python` for project scripts, or activate the environment first:
+
+```bash
+source .venv/bin/activate
+python -m unittest discover -s tests -v
+```
+
+In VS Code, use **Python: Select Interpreter**, then choose this project's
+`.venv/bin/python`. When opening the whole repository, it is located at
+`recognition/ConvNeXt_ADNI_s4982104/.venv/bin/python`.
+Selecting a different interpreter in an existing terminal requires activating
+the environment or using the explicit executable path above.
+Create a separate environment on Rangpur; do not copy the macOS `.venv` there.
+The virtual environment is ignored by Git.
 
 ## Generate the sample manifest (B2)
 
@@ -87,6 +112,48 @@ python3 -m unittest discover -s tests -v
 B2 verification covers the header and representative filename/JSON mappings.
 Full dataset reconciliation and split validation belong to the next step.
 
+## Check and select scans (B3)
+
+Requires Python 3 and Pillow. Run on a SLURM compute node (CPU only):
+
+```bash
+python select_scans.py \
+  --input "$HOME/comp3710-data/adni/samples.csv" \
+  --output-dir "$HOME/comp3710-data/adni/selection_seed42" \
+  --seed 42
+```
+
+The script verifies JPEG structure and fully decodes every slice with Pillow
+(`LOAD_TRUNCATED_IMAGES=False`). A scan must contain 20 distinct slice indices,
+20 readable JPEGs, one valid patient ID and a consistent AD/NC label. Duplicate
+paths, filename/image-ID disagreement, and patient label conflicts exclude the
+whole scan. Dimensions (width, height), modes and channel counts are reported;
+size differences alone do not exclude scans. This checks file integrity, not
+medical image quality. Source files remain unchanged.
+
+`scan_checks.csv` has one row per image ID, explicit failure reasons, and
+`patient_qualified_scan_count` for querying candidate availability. If any patient
+has zero qualified scans, only checks and a blocked summary are written (exit 2).
+Discuss those cases before selecting; never silently drop a patient.
+
+For selection, sort patient IDs as strings and each patient's image IDs as
+integers, initialize `random.Random(42)` once, then call `choice` once per patient.
+Keep the entire chosen scan, not a mixture of randomly sampled slices. Both
+models must use these same manifests. Dates remain blank.
+
+Outputs: `scan_checks.csv`, `selected_scans.csv`, `selected_samples.csv`, and
+`selection_summary.json`. The summary includes counts, input/check/output hashes,
+Python/Pillow versions, script hash and Git provenance. It verifies record subset,
+unique paths, 20 distinct slices, complete patient retention, and repeated and
+shuffled-input selection with a fresh RNG. Fixed seed reproducibility depends on
+the same candidate pool and implementation; changed inputs require new outputs.
+Existing output directories are refused. Real outputs stay outside Git.
+
+When copying the script alone to Rangpur, pass `--code-version-json` with the
+local `code_version()` result; its script hash is validated before use. The base
+commit describes the repository snapshot, not a commit of uncommitted changes.
+No train/validation/test split is performed in B3.
+
 ## Evaluation and results
 
 TODO: identical evaluation splits, per-class precision/recall, macro-F1,
@@ -98,10 +165,14 @@ TODO: analyze 3–5 real failure cases and summarize operational trade-offs.
 
 ## Artificial Intelligence Usage Disclosure
 
-Codex assisted with repository setup and this initial file scaffold, and with
-a read-only data/resource audit. Repository paths, branch configuration, and
-required files were checked. No model code or model performance has yet been
-validated. Update this disclosure as development proceeds.
+Codex assisted with repository setup, the initial scaffold, manifest and
+scan-selection review, data/resource auditing, and local environment setup.
+Validation included output-count and hash checks, an independent seed-42
+selection recalculation, and ten synthetic-fixture tests. The image integrity
+results were read from the provided cluster outputs; the local review did not
+reopen the cluster images. Python 3.11.15 with Pillow 12.3.0 was configured in a
+project-local virtual environment and all ten tests passed there. No model code
+or model performance has yet been validated. Update this disclosure as work proceeds.
 
 ## References
 
