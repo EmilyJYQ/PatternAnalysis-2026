@@ -18,3 +18,9 @@ __pycache__/
 .venv/
 .env
 .DS_Store
+
+# Generated manifests and issue logs stay on the cluster
+samples.csv
+samples_issues.csv
+manifest_summary.json
+/manifests/
