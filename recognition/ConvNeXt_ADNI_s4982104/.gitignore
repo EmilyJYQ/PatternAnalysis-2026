@@ -1,0 +1,20 @@
+# Local datasets and learned weights
+/data/
+/datasets/
+/checkpoints/
+/runs/
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.hdf5
+*.safetensors
+*.onnx
+*.nii
+*.nii.gz
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+.env
+.DS_Store
