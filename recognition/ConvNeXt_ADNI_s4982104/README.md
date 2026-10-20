@@ -154,6 +154,49 @@ local `code_version()` result; its script hash is validated before use. The base
 commit describes the repository snapshot, not a commit of uncommitted changes.
 No train/validation/test split is performed in B3.
 
+## Stratified patient splits (B6)
+
+Run with the project virtual environment; original JPEGs are not needed:
+
+```bash
+.venv/bin/python split_patients.py \
+  --selection-dir /path/to/selection_seed42 \
+  --output-dir /path/to/split_seed42_60_20_20
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+The selection summary must have `status=passed` and SHA-256 hashes matching both
+input CSVs. Validation requires 680 unique patients (221 AD / 459 NC), one unique
+scan per patient, 20 distinct slices per scan, unique paths, and exact patient,
+image and label associations. Invalid input fails before outputs are created.
+Acquisition dates remain blank and no scan is reselected.
+
+Algorithm `stratified-fixed-quotas-v1`: sort patient ID strings separately for AD
+and NC; initialize one independent `random.Random(42)`; shuffle AD then NC once
+each. Assign successive patients to train/validation/test using AD quotas
+133/44/44 and NC quotas 275/92/92. This gives 408/136/136 patients and
+8160/2720/2720 slices. `original_split` is retained solely as source provenance;
+future loaders must use the new `split` column. CNN and ConvNeXt share the outputs.
+Do not change assignment or seed based on model performance.
+
+`patient_splits.csv` is sorted by patient ID. `split_samples.csv` preserves all
+six input fields and adds `split`, sorted by patient ID, image ID and file path.
+`split_summary.json` contains only aggregate counts, all pairwise patient/image/
+path intersections, repeat and shuffled-input validation, input/output hashes,
+Python version, algorithm and code provenance. The committed-script flag compares
+actual script bytes to HEAD; worktree dirtiness comes from Git status, not a
+hardcoded value. A standalone cluster copy may use `--code-version-json` exported
+from the local script's `code_version()`; its script hash is checked before use.
+The base commit is not a commit of pending changes.
+
+Use new output directories; existing directories and outputs inside the selection
+source are refused. Canonical cluster outputs are in
+`~/comp3710-data/adni/split_seed42_60_20_20/`. Local copies belong in
+`final_report/adni_manifest_local/split_seed42_60_20_20/`, outside this repository.
+Do not commit patient CSVs, virtual environments, images or model weights.
+Training learns from train; validation chooses settings and confidence/referral
+rules; test is reserved for final evaluation after the procedure is fixed.
+
 ## Evaluation and results
 
 TODO: identical evaluation splits, per-class precision/recall, macro-F1,

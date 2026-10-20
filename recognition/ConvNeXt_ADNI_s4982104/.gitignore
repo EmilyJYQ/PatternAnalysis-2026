@@ -31,3 +31,9 @@ scan_checks.csv
 selected_scans.csv
 selected_samples.csv
 selection_summary.json
+
+# B6 patient split outputs (private)
+/split_seed42_60_20_20*/
+patient_splits.csv
+split_samples.csv
+split_summary.json
