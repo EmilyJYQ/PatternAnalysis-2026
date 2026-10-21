@@ -197,6 +197,36 @@ Do not commit patient CSVs, virtual environments, images or model weights.
 Training learns from train; validation chooses settings and confidence/referral
 rules; test is reserved for final evaluation after the procedure is fixed.
 
+## Environment and single-image check (C0a)
+
+Run inside an allocated SLURM GPU job using the independent cluster environment:
+
+```bash
+~/comp3710-env/bin/python environment_probe.py \
+  --split-dir ~/comp3710-data/adni/split_seed42_60_20_20 \
+  --output-dir ~/comp3710-data/adni/c0a_environment_check_v2
+```
+
+Choose a new output directory; existing outputs are never overwritten. Run Python
+without `-O` so integrity assertions are enabled. The script verifies the split
+manifest hash, counts and patient separation, fully decodes the first training
+JPEG, and checks a CUDA matrix multiplication. It saves an aggregate
+`environment_check_summary.json`; it does not copy images or train a model.
+
+The supplied C0a run on 2026-10-21 recorded Python 3.11.13, PyTorch
+2.14.0+cu130 (CUDA build 13.0), Pillow 12.3.0 and an A100-PCIE-40GB.
+The CUDA operation passed and one training image decoded as 256 x 240,
+single-channel grayscale. Validation/test images were not read. These versions
+are observations of the existing cluster environment, not a tested installation
+recipe. The original installation command is unknown; a reproducible environment
+specification remains to be documented.
+
+The original evidence and image stay outside Git in
+`final_report/adni_manifest_local/c0a_environment_check/`. Their recorded script
+hash refers to the original probe. This committed copy adds CLI paths and guards;
+it has not yet been rerun on the cluster GPU. Preserve historical evidence and
+use a new output directory for subsequent runs.
+
 ## Evaluation and results
 
 TODO: identical evaluation splits, per-class precision/recall, macro-F1,
@@ -216,6 +246,12 @@ results were read from the provided cluster outputs; the local review did not
 reopen the cluster images. Python 3.11.15 with Pillow 12.3.0 was configured in a
 project-local virtual environment and all ten tests passed there. No model code
 or model performance has yet been validated. Update this disclosure as work proceeds.
+
+Additional Codex assistance covered patient-split verification (19 local tests
+passed), review of the C0a cluster evidence, independent hash checks and decoding
+of the provided local sample, and packaging the probe with configurable paths.
+The packaged probe received local syntax/CLI checks; no new cluster GPU run was
+performed during packaging. Dataset loading and training remain unimplemented.
 
 ## References
 

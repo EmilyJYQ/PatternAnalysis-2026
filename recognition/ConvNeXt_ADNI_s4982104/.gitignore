@@ -37,3 +37,8 @@ selection_summary.json
 patient_splits.csv
 split_samples.csv
 split_summary.json
+
+# C0a environment evidence and private sample
+/c0a_environment_check*/
+environment_check_summary.json
+training_sample.jpeg
