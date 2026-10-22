@@ -227,6 +227,42 @@ hash refers to the original probe. This committed copy adds CLI paths and guards
 it has not yet been rerun on the cluster GPU. Preserve historical evidence and
 use a new output directory for subsequent runs.
 
+## Fixed-manifest grayscale dataset (C0b)
+
+`ADNISliceDataset` reads only the new `split` column. The old `original_split`
+column remains provenance and never controls membership. On construction it
+checks `split_samples.csv` against the SHA-256 in `split_summary.json`, validates
+labels and patient/image consistency, and rejects duplicate paths. No original
+images are needed merely to construct a dataset or inspect its length.
+
+```python
+from dataset import ADNISliceDataset
+train = ADNISliceDataset("/path/to/split_samples.csv", "train")
+validation = ADNISliceDataset("/path/to/split_samples.csv", "validation")
+test = ADNISliceDataset("/path/to/split_samples.csv", "test")
+sample = train[0]  # Actual cluster images must be accessible at manifest paths.
+```
+
+Each item is a dictionary: `image` (CPU float32 tensor), `label` (CPU scalar
+int64 tensor), `patient_id`, `image_id`, and `file_path`. Model labels are
+**NC → 0, AD → 1**. The original metadata's **AD=2** is not the model label.
+Read/decode errors raise an exception containing the source path and cause;
+there is no silent skipping or substitution.
+
+For the simple CNN, all splits use **H=240, W=256**, with shape `[1,240,256]`.
+Pillow fully decodes the image, converts it to grayscale `L`, and uses bilinear
+resizing only if dimensions differ. The uint8 pixels are converted to float32
+and divided by 255, giving `[0,1]`. No mean/std standardization, data-dependent
+normalization, or random augmentation is applied. This rule was chosen from
+previously audited image dimensions before accessing test pixels. ConvNeXt's
+input conversion remains a separate future decision.
+
+The fixed manifest contains 8160/2720/2720 samples for train/validation/test.
+C0b validates real train/validation samples on the cluster; test pixels remain
+unread and only test-manifest membership/counts are checked. A few sampled
+reads do not establish full-dataset decoding. Batch validation and model training
+belong to later steps.
+
 ## Evaluation and results
 
 TODO: identical evaluation splits, per-class precision/recall, macro-F1,
@@ -251,7 +287,14 @@ Additional Codex assistance covered patient-split verification (19 local tests
 passed), review of the C0a cluster evidence, independent hash checks and decoding
 of the provided local sample, and packaging the probe with configurable paths.
 The packaged probe received local syntax/CLI checks; no new cluster GPU run was
-performed during packaging. Dataset loading and training remain unimplemented.
+performed during packaging. Dataset loading is now implemented; batch validation and training remain pending.
+
+C0b review verified dataset/split hashes and actual manifest lengths, ran all
+26 local tests (including seven dataset tests), checked dependency consistency,
+and loaded the existing real-image copy through the dataset using a temporary
+local manifest. Provided cluster evidence records four unique train/validation
+images and no test pixels; the reviewer did not rerun these cluster reads.
+Preprocessing is fixed to grayscale float32 [1,240,256] scaled to [0,1].
 
 ## References
 

@@ -42,3 +42,7 @@ split_summary.json
 /c0a_environment_check*/
 environment_check_summary.json
 training_sample.jpeg
+
+# Private dataset-loading check outputs
+/c0b_dataset_check*/
+dataset_check_summary.json

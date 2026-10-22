@@ -1,2 +1,6 @@
 # Data manifest and scan-selection stage
 Pillow==12.3.0
+
+# C0b: PyTorch dataset and NumPy interoperability
+torch==2.14.0
+numpy==2.4.6
