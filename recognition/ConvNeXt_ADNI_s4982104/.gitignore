@@ -46,3 +46,8 @@ training_sample.jpeg
 # Private dataset-loading check outputs
 /c0b_dataset_check*/
 dataset_check_summary.json
+
+# Private C0c evidence
+/c0c_loader_check*/
+loader_check_summary.json
+loader_check.log

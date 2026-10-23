@@ -287,7 +287,7 @@ Additional Codex assistance covered patient-split verification (19 local tests
 passed), review of the C0a cluster evidence, independent hash checks and decoding
 of the provided local sample, and packaging the probe with configurable paths.
 The packaged probe received local syntax/CLI checks; no new cluster GPU run was
-performed during packaging. Dataset loading is now implemented; batch validation and training remain pending.
+performed during packaging. Dataset loading and the batch-check script are implemented; C0c real-batch validation is complete; model training remains pending.
 
 C0b review verified dataset/split hashes and actual manifest lengths, ran all
 26 local tests (including seven dataset tests), checked dependency consistency,
@@ -296,6 +296,112 @@ local manifest. Provided cluster evidence records four unique train/validation
 images and no test pixels; the reviewer did not rerun these cluster reads.
 Preprocessing is fixed to grayscale float32 [1,240,256] scaled to [0,1].
 
+C0c assistance reviewed the existing batch checker and added regression tests before fixing frozen-cohort count validation and failure-summary persistence. All 34 local synthetic tests passed. No real cluster images were read in this C0c implementation session.
+
 ## References
 
 TODO: cite the course specification, model papers, and any adapted code.
+
+## C0c: batch integrity check
+
+Run this on Rangpur, where the manifest's image paths are accessible:
+
+```bash
+python check_dataloader.py \
+  --manifest ~/comp3710-data/adni/split_seed42_60_20_20/split_samples.csv \
+  --summary ~/comp3710-data/adni/split_seed42_60_20_20/split_summary.json \
+  --output-dir ~/comp3710-data/adni/c0c_loader_check \
+  --batch-size 4 --seed 42
+```
+
+This CPU check uses the existing ADNISliceDataset without training. Training
+shuffles with a private seeded PyTorch generator; validation is sequential.
+Both loaders use num_workers=0 and drop_last=False. Images are float32
+[4,1,240,256] in [0,1]; int64 labels are [4], with NC=0 and AD=1.
+Each collated position is checked against the manifest and its pre-collation
+image tensor. The validation first batch is read again using a fresh iterator
+and must match exactly. Same-patient slices and single-class batches are valid.
+
+The default run reads 12 items (4 training and 8 validation), covering 8 unique
+images. Test image reads are zero; the full manifest is checked for patient
+separation. This is a batch spot check, not a full image audit. Results and
+actual logs are written to loader_check_summary.json and loader_check.log
+outside the repository. Existing evidence is never overwritten.
+
+Run all synthetic tests with `.venv/bin/python -m unittest discover -s tests -v`.
+Tests also verify that a final incomplete batch is retained and that metadata
+or pixel misalignment fails explicitly.
+
+### C0c cluster procedure and evidence
+
+Sync the updated `check_dataloader.py`, `dataset.py`, tests and README to your
+existing cluster project directory. Do not copy the macOS `.venv`.
+On the login node, enter that project directory and activate the same cluster
+Python environment used for C0b. Both locations are your existing paths; the
+examples below assume that this has already been done.
+
+Request a short compute session using the previously verified course setup:
+
+```bash
+srun --account=comp3710 --partition=a100-test --gres=gpu:1 --time=00:10:00 --pty bash
+```
+
+The checker itself uses CPU tensors. This session reuses the known course
+execution route; it does not measure GPU training memory or speed. If the
+shell changes environment or directory, reactivate your cluster environment
+and return to the directory containing `dataset.py` and `check_dataloader.py`.
+
+```bash
+python -c 'import sys, torch, PIL; print(sys.executable); print(torch.__version__, PIL.__version__)'
+C0C_RUN_DIR="$HOME/comp3710-data/adni/c0c_loader_check_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$C0C_RUN_DIR"
+python -m unittest discover -s tests -v > "$C0C_RUN_DIR/test_results.txt" 2>&1
+cat "$C0C_RUN_DIR/test_results.txt"
+```
+
+Continue only if the tests end with `OK`. Then run:
+
+```bash
+python check_dataloader.py   --manifest "$HOME/comp3710-data/adni/split_seed42_60_20_20/split_samples.csv"   --summary "$HOME/comp3710-data/adni/split_seed42_60_20_20/split_summary.json"   --output-dir "$C0C_RUN_DIR" --batch-size 4 --seed 42
+cat "$C0C_RUN_DIR/loader_check_summary.json"
+printf '%s\n' "$C0C_RUN_DIR"
+```
+
+The input location follows the earlier project convention. If your actual
+frozen files are elsewhere, change only those two input paths. Do not rerun
+patient splitting. Each attempt uses a new output directory; the script refuses
+to overwrite existing check logs or summaries. The CLI requires the exact frozen
+8160/2720/2720 cohort lengths before reading images. A failed check exits nonzero
+and saves failure evidence (provided the output directory is writable).
+
+Send back `loader_check_summary.json`, `loader_check.log`, and
+`test_results.txt`, plus the cluster project location and job ID (if available).
+Copy these to the local `final_report/adni_manifest_local/c0c_loader_check/`
+folder, with separate subfolders for repeat attempts. No MRI images or patient
+CSVs need to be sent. Failure logs may contain identifying paths: retain those
+privately, never commit them to the public repository. A default successful run
+reports 12 read calls, 8 unique images, zero test reads, zero errors, correct
+shapes/dtypes, and identical validation batches. C0c real-data acceptance is recorded below; no model training is performed.
+
+### C0c acceptance (24 October 2026)
+
+Saved cluster evidence for job 690651 reports COMPLETED, exit 0:0. Both batch
+shapes are [4,1,240,256], float32 in [0,1], with [4] int64 labels and matching
+metadata. Validation repetition is identical; 12 reads cover 8 distinct images,
+with zero test reads or errors. Training contains NC=3/AD=1; validation NC=4/AD=0,
+which is valid for a small batch. Both frozen input hashes and the dataset.py
+hash match local files; cohort lengths were independently checked.
+
+Version scope: the cluster ran the earlier checker (SHA-256
+4cf2a05250f63cbca9910e8848129479fb44c229e6a381b7df7b479a94f00e04),
+with 6 batch tests passing; the supplied earlier full-suite log shows 32 tests.
+Reconstructing that source from the current version reproduces this exact hash:
+the only changes are strict CLI cohort-count validation and saving input-hash
+failures in the summary. The current version passed all 34 local tests, including
+those two regression cases. The current complete CLI was not rerun on the cluster.
+Use the newly committed version for subsequent deployments. Saved cluster
+provenance remains unchanged (d2732da plus uncommitted changes).
+
+Codex audited the saved evidence, hashes, source difference and manifest counts,
+and reran local tests; it did not rerun remote image reads. This acceptance covers
+sampled batch loading only, not full-image decoding or model/GPU training.
