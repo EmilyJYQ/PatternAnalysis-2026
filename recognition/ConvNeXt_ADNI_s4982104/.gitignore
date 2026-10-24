@@ -72,3 +72,9 @@ prediction_summary.json
 prediction.log
 slice_predictions.csv
 patient_predictions.csv
+
+# Private paired compatibility evidence
+/e2_compatibility*/
+e2-slurm-*.out
+e2_summary.json
+e2_error.log

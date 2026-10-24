@@ -757,3 +757,148 @@ Codex independently audited saved outputs and reran local tests; it did not reru
 remote predictions. Next plan a longer CNN baseline and controlled validation-only
 experiments for low AD recall, retaining the existing split, C2/C3 evidence and
 sealed test set. No additional training or threshold tuning was done in acceptance.
+
+
+## E1 weighting and paired evidence; E2 one-epoch compatibility
+
+E1 is implemented and passes 61 local tests (the previous 55 plus six new tests).
+E2 real-data/CUDA compatibility passed on 25 October 2026; see acceptance below.
+
+`train.py --class-weighting none|balanced` defaults to none. Balanced weights are
+computed exclusively from unique training patients: N/(2*N_class), in [NC,AD]
+order. The real split gives [408/550,408/266] = [0.74181818,1.53383459]. Training
+must contain both classes and equal slice counts per patient for balanced mode.
+The validation loss is always unweighted and selects the best checkpoint with
+strict improvement (earlier epoch wins ties). No weighted sampler, augmentation,
+early stopping, learning-rate schedule or threshold change is introduced.
+
+Each epoch logs training loss numerator/denominator and unweighted_loss. For the
+weighted objective, the denominator is the sum of target-class weights, including
+the final partial batch. Unweighted mode retains the original forward/backward
+calculation, verified against the old algorithm's loss and parameter updates.
+Do not compare the weighted objective with A's ordinary loss as if they were the
+same scale; use the shared unweighted diagnostic and validation metrics.
+
+Config records class weights and patient/slice counts. The summary stores an
+initial-state SHA-256; each epoch stores a SHA-256 of the ordered batch paths
+including batch boundaries. Same-seed A/B must match both hashes. These hashes
+record initialization and sample order, not equality of learned model weights.
+
+After epoch 3, `first3/best.pt` freezes the best checkpoint among epochs 1–3,
+not necessarily epoch 3. `first3/training_summary.json` preserves the three-epoch
+history, corresponding best epoch/loss, input/source/config and checkpoint hashes,
+plus reload verification. Its config retains the parent run's planned epoch count;
+completed_epochs=3 and scope explicitly identify the prefix. Later improvements
+only replace the parent best.pt. The C3 predictor accepts this checkpoint/summary
+pair directly. For fewer than 3 epochs, first3_snapshot.status is not_reached and
+no first3 directory is created. A failed parent run may retain a valid three-epoch
+prefix; this never implies the full parent run passed.
+
+### Run E2, not the 30-epoch experiment yet
+
+Sync train.py, run_e2.py, run_e2.slurm, the entire tests directory and the current
+predict.py, modules.py, dataset.py, check_dataloader.py, check_cnn.py. Activate the
+same cluster Python environment, then on the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_e2.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+One job uses account/partition comp3710, one GPU, --mem=0 and a 20-minute ceiling.
+After all 61 tests pass, it runs A=none for one epoch and its two-pass C3 prediction,
+then B=balanced for one epoch and prediction. Both start fresh with seed42,
+batch16 and Adam lr0.001. run_e2.py checks paired config (excluding weighting),
+initialization, training order, source/inputs, unweighted validation and checkpoint
+provenance, then saves e2_summary.json. Failures stop the job and retain available
+evidence. Nothing overwrites C2/C3 outputs.
+
+Outputs live under $HOME/comp3710-data/adni/e2_compatibility_JOB_ID/.
+After completion replace JOB_ID and save:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS \
+  > "$HOME/comp3710-data/adni/e2_compatibility_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+Return the following tree to local final_report/adni_manifest_local/e2_compatibility/:
+
+```text
+job_id.txt
+test_results.txt
+slurm_status_JOB_ID.txt
+e2-slurm-JOB_ID.out
+pair/
+  e2_summary.json
+  A/
+    training/{config.json,training_summary.json,epochs.jsonl,training.log}
+    prediction/{prediction_summary.json,prediction.log,slice_predictions.csv,patient_predictions.csv}
+  B/
+    training/{config.json,training_summary.json,epochs.jsonl,training.log}
+    prediction/{prediction_summary.json,prediction.log,slice_predictions.csv,patient_predictions.csv}
+```
+
+The scheduler log is in the cluster project directory. Keep all .pt files on the
+cluster; CSVs remain private local evidence, not Git content. Include e2_error.log
+and partial outputs if a step fails. There is intentionally no first3 snapshot in
+a one-epoch E2 run: the snapshot logic is covered by the local four-epoch fixture,
+and real-data snapshot evidence will be checked during E3.
+
+Acceptance: job COMPLETED/0:0, 61 tests pass; both training and prediction summaries
+and the pair summary pass. Each training arm reads 8160/2720/0 train/validation/test;
+each prediction reads 0/5440/0 and exports 2720 slices/136 patients. Across both arms,
+reads are train=16320, validation=16320, test=0. Verify NC275/AD133 training counts,
+correct weights, equal initial-state/order hashes, unweighted validation, expected
+best epoch 1, consistent source/input/checkpoint/output hashes and repeat predictions.
+Low recall does not fail E2 compatibility and one epoch does not establish benefit.
+
+AI disclosure: Codex implemented weighting, paired evidence, prefix snapshot,
+run_e2.py/run_e2.slurm and six tests. New tests initially failed for the missing API;
+all 61 local tests passed after implementation (8.835s). Tests cover the exact
+weighted denominator and gradients, default-mode equivalence, paired initialization/
+order, immutable first3 best selection with later improvement, C3 prefix reload,
+and tampered pair rejection. Shell syntax/diff checks passed. No remote run or
+commit was performed in this implementation turn.
+
+
+### E2 acceptance — 25 October 2026
+
+Job 694577 completed (0:0) on CUDA in 1m22s. Cluster tests: 61 passed (31.882s);
+fresh local acceptance: 61 passed (8.654s). Shell syntax and diff checks passed.
+Both arms trained one epoch and passed C3 validation prediction. Independent audit
+matched runner/source/input/output and summary hashes, paired configuration,
+initialization and ordered batch hashes. A has no weights; B uses
+[0.7418181818181818,1.5338345864661653] from NC275/AD133 training patients.
+Validation remains unweighted. Best epoch=1 in each arm; first3 is correctly
+not_reached. Its real-data verification remains for E3, not this one-epoch run.
+
+Each arm read train/validation/test = 8160/2720/0 during training, then 0/5440/0
+for prediction. Combined totals: 16320/16320/0. Each exported 2720 slices and
+136 patients. Independent recalculation confirmed exact validation-manifest
+coverage, 20 slices/one scan/consistent label per patient, probability means,
+threshold decisions, per-class metrics, accuracy, macro-F1 and pairwise AUROC.
+Prediction slice metrics match the corresponding training validation metrics.
+Both repeat passes report zero probability differences and unchanged model state.
+Checkpoint hashes agree between source and prediction summaries; weights remain
+on the cluster and were not locally reloaded during this acceptance.
+
+| Patient-level metric | A: none | B: balanced |
+| --- | --- | --- |
+| Accuracy | 67.647% | 67.647% |
+| AD recall | 0/44 = 0% | 21/44 = 47.727% |
+| NC specificity | 92/92 = 100% | 71/92 = 77.174% |
+| AD precision | 0 (zero-division policy) | 50% |
+| Macro-F1 | 0.403509 | 0.625906 |
+| AUROC | 0.685524 | 0.679101 |
+
+Confusion matrices: A [[92,0],[44,0]], B [[71,21],[23,21]]. B identifies 21 AD
+patients but also misclassifies 21 NC patients. This is an early tradeoff, not
+proof that weighting is superior: one epoch/one seed does not settle the planned
+30-epoch paired comparison. No threshold or protocol was changed after inspection.
+A/B training elapsed was 17.91/12.79s, prediction 5.08/5.15s; allocated memory
+277.42 MiB each, reserved 518 MiB each. These include checks, not formal latency.
+
+Evidence is private under final_report/adni_manifest_local/e2_compatibility/.
+Codex audited saved evidence and ran local tests, without remote retraining or
+modifying historical outputs. Next E3: A42, 30 epochs from scratch, retain first3
+snapshot, then predict both first3 and full-run best checkpoints before E4/B42.
