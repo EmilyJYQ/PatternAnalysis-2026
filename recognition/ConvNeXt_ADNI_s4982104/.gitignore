@@ -51,3 +51,9 @@ dataset_check_summary.json
 /c0c_loader_check*/
 loader_check_summary.json
 loader_check.log
+
+# Private CNN smoke evidence and weights
+/cnn_smoke_check*/
+cnn_check_summary.json
+cnn_check.log
+smoke_checkpoint.pt

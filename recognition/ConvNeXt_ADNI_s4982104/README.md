@@ -405,3 +405,92 @@ provenance remains unchanged (d2732da plus uncommitted changes).
 Codex audited the saved evidence, hashes, source difference and manifest counts,
 and reran local tests; it did not rerun remote image reads. This acceptance covers
 sampled batch loading only, not full-image decoding or model/GPU training.
+
+## Simple CNN smoke check (C1)
+
+`modules.py` now defines SimpleCNN: Conv2d/ReLU/MaxPool blocks with channels
+1→16→32→64, adaptive average pooling, then a 64→2 classifier (23,426 parameters).
+It returns raw logits, ordered NC=0 and AD=1. CrossEntropyLoss consumes logits
+and int64 labels directly; do not apply softmax before this loss.
+
+`check_cnn.py` runs two Adam updates (lr=0.001, batch=4, seed=42), then one
+validation batch under eval/no_grad. It checks finite outputs/loss/gradients,
+nonzero gradients, changed finite parameters and checkpoint prediction agreement.
+Validation does not update parameters. No accuracy, convergence or monotonic-loss
+claim is made. `train.py` remains a scaffold: this is not formal training.
+
+Sync modules.py, check_cnn.py, check_dataloader.py, dataset.py and all tests to
+the existing cluster project directory. Use the previous C0b/C0c cluster Python
+environment, not the Mac .venv. On the login node request a compute session:
+
+```bash
+srun --account=comp3710 --partition=a100-test --gres=gpu:1 --time=00:10:00 --pty bash
+```
+
+Inside that session, activate your existing cluster Python environment, then:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+CNN_RUN_DIR="$HOME/comp3710-data/adni/cnn_smoke_check_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$CNN_RUN_DIR"
+python -m unittest discover -s tests -v > "$CNN_RUN_DIR/test_results.txt" 2>&1
+cat "$CNN_RUN_DIR/test_results.txt"
+```
+
+Continue only when the full suite ends with `OK` (currently 41 tests).
+
+```bash
+python check_cnn.py \
+  --manifest "$HOME/comp3710-data/adni/split_seed42_60_20_20/split_samples.csv" \
+  --summary "$HOME/comp3710-data/adni/split_seed42_60_20_20/split_summary.json" \
+  --output-dir "$CNN_RUN_DIR" \
+  --device cuda --batch-size 4 --steps 2 --seed 42
+cat "$CNN_RUN_DIR/cnn_check_summary.json"
+printf '%s\n' "$CNN_RUN_DIR"
+printf '%s\n' "${SLURM_JOB_ID:-unavailable}" > "$CNN_RUN_DIR/job_id.txt"
+```
+
+Default real-data counts are train=8, validation=4, test=0, unique_images=12.
+The script fails if CUDA was requested but is unavailable; CPU fallback must
+be explicitly selected with --device cpu and does not satisfy the GPU check.
+Outputs are cnn_check_summary.json, cnn_check.log and smoke_checkpoint.pt.
+The checkpoint is only for the smoke round-trip check, not a trained deliverable.
+Do not commit it or send it for routine acceptance. Repeated runs require a new
+output directory so that earlier evidence is retained.
+
+Send back summary, log, test_results.txt and job_id.txt; add saved Slurm status
+if available. Store local copies under final_report/adni_manifest_local/cnn_smoke_check/.
+The summary records code/input hashes, environment, parameters, each step loss,
+gradient norm, updates, validation loss, reload agreement, reads, synchronized
+step times and peak CUDA allocated/reserved bytes. Timing includes diagnostics
+and excludes loading/transfers; memory is captured before loading a second model.
+These are smoke-run measurements, not formal throughput or full-run estimates.
+A non-Git cluster directory is recorded honestly; source file hashes identify
+this run without rewriting old provenance.
+
+Local validation: 41 synthetic tests passed, including 7 CNN tests covering
+batch-size one/four, gradients/updates, invalid input/labels, checkpoint reload,
+end-to-end loading with an incomplete final batch and nonexistent test images,
+and CLI failure evidence. Codex implemented this CNN/checker and tested locally;
+The user ran the real MRI/CUDA check on the cluster; Codex audited the returned
+evidence and reran the local suite. Formal training remains pending.
+
+
+### C1 acceptance — 24 October 2026
+
+Job 690695 completed on A100-PCIE-40GB with exit 0:0 (elapsed 1m43s).
+The CUDA summary reports passed, zero errors and 23,426 model parameters.
+Both Adam steps updated parameters with finite losses (0.698846, 0.685690)
+and nonzero finite gradient norms (0.452714, 0.437852). Validation loss was
+0.652301 with gradients disabled; checkpoint predictions agreed after reload.
+Reads were train=8, validation=4, test=0, unique_images=12.
+All four source hashes and both frozen-input hashes match the local files.
+The cluster full suite passed 41 tests; the acceptance rerun locally also passed 41.
+
+Peak CUDA allocated memory was 73.06 MiB and reserved memory 96 MiB.
+Diagnostic step times were 4.97152s and 0.00534s; these include checks and exclude
+loading/transfers, so they do not establish formal latency or a training budget.
+Private evidence is retained in final_report/adni_manifest_local/cnn_smoke_check/.
+C1 is accepted; next implement the epoch training/validation loop, validation-based
+checkpoint selection and reproducible logs, then run a short pilot. Keep the test
+set untouched during this development. No accuracy target has yet been evaluated.
