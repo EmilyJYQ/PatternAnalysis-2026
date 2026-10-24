@@ -57,3 +57,10 @@ loader_check.log
 cnn_check_summary.json
 cnn_check.log
 smoke_checkpoint.pt
+
+# Private C2 pilot evidence
+/c2_pilot*/
+c2-slurm-*.out
+training_summary.json
+training.log
+epochs.jsonl

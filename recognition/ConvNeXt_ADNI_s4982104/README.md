@@ -4,8 +4,10 @@ COMP3710 individual project — s4982104.
 
 ## Status
 
-Initial project scaffold. Models, patient-level splits, training, and evaluation
-have not yet been implemented. No experimental results are claimed.
+Patient-disjoint splits, data loading and the SimpleCNN C1 GPU check are complete.
+C2 training/validation, checkpoint selection and logging are implemented and pass
+49 local tests; the three-epoch cluster pilot passed C2 engineering acceptance on 25 October 2026. ConvNeXt and final
+evaluation remain pending. No final accuracy results are claimed.
 
 ## Project objective
 
@@ -17,8 +19,8 @@ cases for human review, GPU memory, and inference time.
 
 Course data location: `/home/groups/comp3710/ADNI` on Rangpur.
 The initial read-only audit found 30,520 JPEG slices, 1,526 image IDs, and
-680 patients. The supplied train/test folders share 216 patients; create
-patient-disjoint splits using `meta_data_with_label.json` before training.
+680 patients. The supplied train/test folders share 216 patients. The frozen replacement split selects one scan per patient
+and separates patients into 60/20/20 train/validation/test groups.
 Folder `NC` denotes the normal class referred to as `CN` in the task.
 Do not commit images or model weights.
 
@@ -417,7 +419,7 @@ and int64 labels directly; do not apply softmax before this loss.
 validation batch under eval/no_grad. It checks finite outputs/loss/gradients,
 nonzero gradients, changed finite parameters and checkpoint prediction agreement.
 Validation does not update parameters. No accuracy, convergence or monotonic-loss
-claim is made. `train.py` remains a scaffold: this is not formal training.
+claim is made. `train.py` now implements the separate C2 pilot described below; C1 itself is not formal training.
 
 Sync modules.py, check_cnn.py, check_dataloader.py, dataset.py and all tests to
 the existing cluster project directory. Use the previous C0b/C0c cluster Python
@@ -491,6 +493,146 @@ Peak CUDA allocated memory was 73.06 MiB and reserved memory 96 MiB.
 Diagnostic step times were 4.97152s and 0.00534s; these include checks and exclude
 loading/transfers, so they do not establish formal latency or a training budget.
 Private evidence is retained in final_report/adni_manifest_local/cnn_smoke_check/.
-C1 is accepted; next implement the epoch training/validation loop, validation-based
-checkpoint selection and reproducible logs, then run a short pilot. Keep the test
+C1 is accepted. The C2 epoch loop, checkpoint selection and logs are implemented
+and locally tested; the real-data C2 pilot passed engineering acceptance; see the results below. Keep the test
 set untouched during this development. No accuracy target has yet been evaluated.
+
+
+## C2: full-epoch CNN pilot (accepted 25 October 2026)
+
+`train.py` trains SimpleCNN on the complete fixed training split and validates on
+all validation slices every epoch. Defaults: 3 epochs, batch 16, Adam lr 0.001,
+seed 42, no augmentation, weighting, scheduler or early stopping. Train shuffles
+using a seeded generator; validation is sequential. Both keep incomplete batches.
+The pilot is deliberately bounded to three epochs; it is not the final training
+schedule. CLI enforces split lengths 8160/2720/2720. Test metadata is validated;
+no test loader is created and no test pixels are read.
+
+The best checkpoint minimizes validation cross-entropy; only strict improvement
+replaces it (first epoch wins ties). Loss is sample-weighted, including the final
+incomplete batch. Logs report **slice-level** accuracy, per-class precision/recall/F1,
+macro-F1, confusion matrix (true rows/predicted columns, NC then AD), and AD AUROC.
+Prediction uses P(AD)>=0.5. Undefined precision/recall/F1 use zero; AUROC is null
+when only one class is present. These metrics do not constitute patient-level
+results. Training metrics aggregate predictions made during optimization; validation
+metrics use the final model for that epoch. No 80% threshold is used to pass C2.
+
+Deterministic Torch algorithms and seeded shuffling are enabled; the runner sets
+CUBLAS_WORKSPACE_CONFIG. Same-environment CPU reproducibility is tested; equality
+across PyTorch versions or CPU/GPU is not assumed. Image data are not cached.
+Read counts are collected with num_workers=0. Validation uses eval/no_grad and
+checks all model state is unchanged; each training epoch must update parameters.
+Best weights are reloaded and compared using a fixed synthetic probe. This does
+not yet implement the separate `predict.py` deliverable.
+
+### Submit the three-epoch pilot
+
+Sync train.py, run_c2.slurm, modules.py, dataset.py, check_dataloader.py,
+check_cnn.py and the complete tests directory to the existing cluster project.
+Activate the same cluster environment used for C1, then on the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+python -c 'import sys; print(sys.executable)'
+sbatch run_c2.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+The runner requests one GPU in comp3710 with account comp3710 and a one-hour
+wall-time ceiling (not a predicted runtime). It runs all tests first and stops
+on failure, then runs the pilot. It passes an absolute Python interpreter path;
+do not upload or use the Mac .venv. Keep any environment modules required by
+your existing cluster Python loaded before submission.
+
+Replace JOB_ID below with the job number returned by sbatch:
+
+```bash
+squeue -j JOB_ID
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS   > "$HOME/comp3710-data/adni/c2_pilot_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+Run sacct after completion. Outputs:
+
+```text
+$HOME/comp3710-data/adni/c2_pilot_JOB_ID/
+  job_id.txt
+  test_results.txt
+  slurm_status_JOB_ID.txt
+  training/
+    config.json
+    epochs.jsonl
+    training.log
+    training_summary.json
+    best.pt
+```
+
+The project directory also receives c2-slurm-JOB_ID.out; return this scheduler log.
+A new output directory is mandatory. JSON/JSONL record configuration, source/input
+hashes, environment, per-epoch metrics and timing, peak CUDA memory (before creating
+the reload model), selected epoch, checkpoint hash and reload agreement. Each epoch
+time includes data loading, transfers, optimization, validation and checks, but
+excludes checkpoint writes. Overall elapsed time includes setup and checkpoint
+verification. These measurements are not inference-latency benchmarks. Python
+exceptions save a failed summary and traceback; scheduler termination can leave
+only partial logs, which must also be retained.
+
+### Return for acceptance
+
+Copy the evidence directory **excluding best.pt** to
+final_report/adni_manifest_local/c2_training_pilot/ and include the scheduler log.
+Return seven evidence files plus the scheduler log: job_id.txt, test_results.txt,
+slurm_status_JOB_ID.txt and training/{config.json,epochs.jsonl,training.log,
+training_summary.json}. Keep best.pt privately on the cluster.
+
+Acceptance: COMPLETED/0:0; 49 tests pass; summary passed/error_count=0 on CUDA;
+three complete epochs with 8160 train and 2720 validation samples each; cumulative
+reads train=24480, validation=8160, test=0; finite loss/metrics; training parameters
+changed and validation unchanged; best_epoch matches minimum validation loss;
+checkpoint reload agrees; four code and two input hashes match the audited files.
+Review actual elapsed time and peak VRAM against the project budget/20GB target
+before planning longer runs. Neither falling loss nor 80% accuracy is required
+for this engineering acceptance. Unexpected errors are investigated before reruns.
+
+AI disclosure (C2): Codex implemented the loop, metrics, runner and eight tests,
+and updated the plan. All 49 local synthetic tests passed (including the existing
+41); shell syntax and diff checks passed. Real MRI/CUDA C2 execution and acceptance
+are pending. No new commit was made in this implementation turn.
+
+
+### C2 cluster acceptance — 25 October 2026
+
+Job 694112 completed (0:0) on A100-PCIE-40GB, wall time 1m07s. The training
+program took 39.62s; full-epoch times were 14.37/11.99/11.31s. All three epochs
+covered 8160 train and 2720 validation slices; cumulative reads were
+24480/8160/0 for train/validation/test. Parameters changed during training and
+remained unchanged during validation. The lowest validation loss selected epoch 3;
+checkpoint reload agreed according to the cluster summary. Four code and two
+input hashes match local files. Config and JSONL history match the summary.
+Confusion-derived metrics were independently recomputed; individual predictions
+and the private checkpoint were not returned, so loss/AUROC/reload verification
+uses the saved cluster evidence. Cluster tests: 49 passed (19.674s); fresh local
+acceptance tests: 49 passed (6.627s).
+
+| Epoch | Validation loss | Slice accuracy | Macro-F1 | AD AUROC |
+| --- | --- | --- | --- | --- |
+| 1 | 0.616887 | 67.647% | 0.403509 | 0.625416 |
+| 2 | 0.614117 | 67.574% | 0.403247 | 0.629774 |
+| 3 | 0.611294 | 67.574% | 0.405419 | 0.631629 |
+
+Best-epoch confusion matrix (NC/AD): [[1836,4],[878,2]]. AD recall is only
+2/880 = 0.227%; always predicting NC gives 67.647% accuracy. C2 passes as a
+pipeline check, not as a useful classifier or the 80% performance target.
+Peak CUDA allocated/reserved memory was 277.51/518 MiB, below the 20GB target;
+these are pilot measurements, not inference latency or a guarantee for other models.
+
+The first submission was rejected for --mem=8G. The returned submission notes
+report the partition's memory configuration and successful resubmission using
+--mem=0. The runner now uses --mem=0 to reproduce that successful request
+(all configured node memory, not zero memory). Only this submission directive
+changed after the run; training-source hashes remain unchanged.
+
+Evidence: final_report/adni_manifest_local/c2_training_pilot/, including original
+submission notes. Codex audited returned evidence and reran local tests, but did
+not execute remote training or retrieve patient images/weights. Next implement
+C3 checkpoint-based prediction on validation data, including slice-to-patient
+probability aggregation and diagnostic outputs; then plan the longer baseline
+run and controlled experiments addressing low AD recall. Keep the test set sealed.
