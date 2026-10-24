@@ -902,3 +902,146 @@ Evidence is private under final_report/adni_manifest_local/e2_compatibility/.
 Codex audited saved evidence and ran local tests, without remote retraining or
 modifying historical outputs. Next E3: A42, 30 epochs from scratch, retain first3
 snapshot, then predict both first3 and full-run best checkpoints before E4/B42.
+
+
+## E3 A42: 30 epochs and automatic first3/full-best evaluation
+
+E3 orchestration and the real A42 cluster run passed acceptance on 25 October 2026. Existing train.py and predict.py are reused unchanged. run_e3.py fixes
+seed42, unweighted loss, 30 epochs, batch16, Adam lr0.001; no early stopping,
+augmentation, schedule, threshold tuning or test-set evaluation. Training starts
+from scratch. The public CLI does not expose protocol changes.
+
+After training, the runner evaluates training/first3/best.pt with its own snapshot
+summary, then training/best.pt with the full-run summary. Both are minimum
+unweighted-validation-loss checkpoints (earlier epoch wins ties), not automatically
+the weights at epochs 3 and 30. It checks prefix history/config/provenance against
+the full run, recomputes best epochs, verifies physical checkpoint hashes, runs C3
+repeat prediction for both, and writes comparison.csv and e3_summary.json.
+The comparison contains patient-level accuracy, AD recall/precision, NC specificity,
+macro-F1, balanced accuracy and AUROC. Full slice metrics stay in prediction summaries.
+Identical first3/full best checkpoints are valid and are recorded as same_checkpoint=true.
+Improvement is not an engineering acceptance requirement.
+
+### Submit E3
+
+Sync run_e3.py, run_e3.slurm, all tests, and the current train.py, predict.py,
+modules.py, dataset.py, check_dataloader.py, check_cnn.py and run_e2.py. Activate
+the existing cluster Python environment, then on the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_e3.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+This single job runs all 65 tests, then training and both prediction evaluations.
+No separate C3 job is needed. It requests one GPU on comp3710, account comp3710,
+--mem=0, a one-hour ceiling (not estimated duration). The earlier per-epoch timing
+suggests several minutes, but actual Slurm usage determines the budget.
+Evidence directory: $HOME/comp3710-data/adni/e3_A42_JOB_ID/.
+After completion replace JOB_ID and save:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS \
+  > "$HOME/comp3710-data/adni/e3_A42_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+Copy the following tree, excluding all .pt files, to local
+final_report/adni_manifest_local/e3_A42/:
+
+```text
+job_id.txt
+test_results.txt
+slurm_status_JOB_ID.txt
+e3-slurm-JOB_ID.out
+run/
+  e3_summary.json
+  comparison.csv
+  training/
+    config.json
+    training_summary.json
+    epochs.jsonl
+    training.log
+    first3/training_summary.json
+  prediction_first3/
+    prediction_summary.json
+    prediction.log
+    slice_predictions.csv
+    patient_predictions.csv
+  prediction_full/
+    prediction_summary.json
+    prediction.log
+    slice_predictions.csv
+    patient_predictions.csv
+```
+
+The scheduler log is in the project directory. Keep training/best.pt and
+training/first3/best.pt on the cluster. CSVs stay private and are ignored by Git.
+On failure return e3_error.log, scheduler output and partial evidence too; do not
+overwrite the failed run. Python exceptions save failed summaries; scheduler kills
+may leave partial files.
+
+Acceptance: 65 tests pass, COMPLETED/0:0, CUDA and summary passed. Full 30 epochs
+cover 8160 train/2720 validation slices each; training counts 244800/81600/0.
+Each prediction reads 0/5440/0 and exports 2720 slices/136 patients (20 each).
+Total actual reads are train=244800, validation=92480, test=0; first3 is a prefix
+and is not counted again. Verify prefix history exactly equals full history[:3],
+best epoch selection, checkpoint/summary/input/source/output hashes, repeat checks,
+comparison metrics and resource use. Compare the first three training epochs with
+C2/E2 as a reproducibility diagnostic, allowing stated environment/numerical differences.
+A valid outcome may show no benefit or worse patient recall after longer training;
+retain the evidence and continue the predefined E4/B42 comparison without tuning
+this A42 run after inspecting its outcomes.
+
+AI disclosure: Codex added the E3 runner, Slurm wrapper and four tests. New tests
+first failed on the missing runner; after implementation and correcting an
+inconsistent mock loss field, all 65 local tests passed (9.429s). Tests cover
+four-epoch synthetic end-to-end evaluation, exact read accounting, tampered best
+epoch rejection, saved failures and the case where both best checkpoints are the
+same. Shell syntax and diff checks passed. No real 30-epoch/CUDA E3 run was performed;
+no commit was made in this preparation turn.
+
+
+### E3 acceptance — 25 October 2026
+
+Job 694924 completed 30 epochs on CUDA (0:0), Slurm wall time 6m24s
+(0.1067 GPU-hours). Training took 338.91s, the E3 training/evaluation sequence
+348.97s; peak CUDA allocated/reserved was 277.51/518 MiB. Cluster tests: 65 passed
+(29.259s); fresh local acceptance: 65 passed (9.761s). Shell syntax/diff checks passed.
+
+Independent audit matched runner/source/input/summary/output hashes, all 30 epoch
+records, the first3 prefix and comparison.csv. Both predictions exactly cover
+2720 validation slices and 136 patients with 20 slices each. Patient means,
+threshold decisions, all confusion-derived metrics and AUROC (via independent
+positive-negative probability comparisons) were recomputed. Actual reads total
+244800/92480/0 train/validation/test. Prefix losses and metrics exactly reproduce
+C2's first three epochs. Repeat inference and unchanged parameters pass according
+to saved cluster evidence. Checkpoint hashes link training and predictions; weights
+remain on the cluster, so local acceptance did not reread their bytes.
+
+| Patient metric | Best within first 3 | Best within all 30 |
+| --- | --- | --- |
+| Selected epoch | 3 | 29 |
+| Unweighted validation loss | 0.611294 | 0.509784 |
+| Accuracy | 67.647% | 72.059% |
+| AD recall | 0/44 = 0% | 20/44 = 45.455% |
+| NC specificity | 92/92 = 100% | 78/92 = 84.783% |
+| AD precision | 0 (zero-division policy) | 58.824% |
+| Macro-F1 | 0.403509 | 0.658472 |
+| Balanced accuracy | 50% | 65.119% |
+| AUROC | 0.689476 | 0.811759 |
+
+Patient confusion changes from [[92,0],[44,0]] to [[78,14],[24,20]]. Twenty AD
+patients become correctly identified at the cost of fourteen NC false positives;
+accuracy rises 4.412 percentage points. Slice accuracy rises 67.574% to 72.647%,
+macro-F1 0.405419 to 0.665148, AUROC 0.631629 to 0.788459. Epoch 30 was not selected:
+its validation loss 0.513093 exceeds epoch 29's 0.509784. Selection remains based
+on the predefined loss rule, not a retrospectively preferred metric.
+
+This is improvement for one seed on a validation cohort used for selection, not
+an unbiased test estimate or proof across seeds; the 80% target is not reached.
+Do not compare E3 A42's 30-epoch result with E2 B42's one-epoch result as a fair
+weighting comparison. Next E4: B42 balanced training for the same 30 epochs and
+same selection/prediction protocol, then the paired seed43/44 runs. No E4 run or
+protocol change was performed here. Private evidence is retained under
+final_report/adni_manifest_local/e3_A42/. Codex audited saved evidence and reran
+local tests; it did not perform remote training or alter original run outputs.
