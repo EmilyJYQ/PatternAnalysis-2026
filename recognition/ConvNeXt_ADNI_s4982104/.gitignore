@@ -64,3 +64,11 @@ c2-slurm-*.out
 training_summary.json
 training.log
 epochs.jsonl
+
+# Private C3 validation predictions
+/c3_validation*/
+c3-slurm-*.out
+prediction_summary.json
+prediction.log
+slice_predictions.csv
+patient_predictions.csv

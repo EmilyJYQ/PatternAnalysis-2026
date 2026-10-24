@@ -7,7 +7,8 @@ COMP3710 individual project — s4982104.
 Patient-disjoint splits, data loading and the SimpleCNN C1 GPU check are complete.
 C2 training/validation, checkpoint selection and logging are implemented and pass
 49 local tests; the three-epoch cluster pilot passed C2 engineering acceptance on 25 October 2026. ConvNeXt and final
-evaluation remain pending. No final accuracy results are claimed.
+evaluation remain pending. C3 validation inference and patient aggregation now pass
+55 local tests and passed cluster acceptance on 25 October 2026. No final accuracy results are claimed.
 
 ## Project objective
 
@@ -636,3 +637,123 @@ not execute remote training or retrieve patient images/weights. Next implement
 C3 checkpoint-based prediction on validation data, including slice-to-patient
 probability aggregation and diagnostic outputs; then plan the longer baseline
 run and controlled experiments addressing low AD recall. Keep the test set sealed.
+
+
+## C3: validation predictions and patient aggregation (accepted 25 October 2026)
+
+`predict.py` loads the C2 best checkpoint and predicts **validation only**.
+It verifies the checkpoint hash against training_summary.json, the selected epoch,
+loss/configuration, input hashes and model/preprocessing source hashes. The CLI
+requires the frozen 8160/2720/2720 cohort, exactly 20 slices per patient and 136
+validation patients. Each patient must have one scan and one label; paths must be
+unique. There is no split or threshold tuning option.
+
+For each of 2720 slices, save P(AD) and the predicted class. For each of 136
+patients, average the 20 probabilities and predict AD when the mean is >=0.5.
+This is probability averaging, not majority voting. Report metrics separately
+for slices and patients using the existing NC=0/AD=1 definitions and zero-division
+policy. Patient-level results are validation results, not unseen-test estimates;
+this cohort already selected the checkpoint.
+
+Prediction uses eval/no_grad, checks model state is unchanged, and loads the same
+checkpoint state into a new model for a second full pass. Identity/order and
+classes must agree; probabilities must match within rtol=1e-5, atol=1e-6.
+Only first-pass predictions are exported. Expected reads: train=0,
+validation=5440, test=0. Peak memory and elapsed time include repeat checking,
+so this is not a formal inference-latency benchmark. No training occurs.
+
+### Cluster run
+
+Sync predict.py, run_c3.slurm and the complete tests directory, and ensure train.py,
+modules.py, dataset.py, check_dataloader.py and check_cnn.py are current. Preserve
+the C2 best.pt and training_summary.json. Activate the C1/C2 cluster environment,
+then submit from the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_c3.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+Default checkpoint source is
+$HOME/comp3710-data/adni/c2_pilot_694112/training/. If relocated, pass that training
+directory as the second script argument. The runner uses comp3710/account comp3710,
+one GPU, --mem=0 and a 20-minute wall-time ceiling; it runs 55 tests before
+prediction. Reuse the existing cluster environment, not the Mac .venv.
+
+After completion replace JOB_ID and save scheduler status:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS \
+  > "$HOME/comp3710-data/adni/c3_validation_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+### Return for acceptance
+
+Copy to local final_report/adni_manifest_local/c3_validation/:
+
+```text
+job_id.txt
+slurm_status_JOB_ID.txt
+test_results.txt
+c3-slurm-JOB_ID.out
+prediction/
+  prediction_summary.json
+  prediction.log
+  slice_predictions.csv
+  patient_predictions.csv
+```
+
+All except c3-slurm-JOB_ID.out are under
+$HOME/comp3710-data/adni/c3_validation_JOB_ID/; the scheduler log is in the project
+directory. The CSVs contain research IDs and paths: retain them as private local
+acceptance evidence, do not commit or publish. No image or weight transfer is needed.
+A new output directory is required; Python exceptions save a failed summary/log.
+
+Acceptance: COMPLETED/0:0; 55 tests pass; summary passed with zero errors on CUDA;
+2720 unique slice records and 136 patients (NC92, AD44), 20 slices each; correct
+mean probabilities and threshold; metric recomputation agrees; unchanged model,
+repeat predictions agree, reads 0/5440/0. Match five source hashes, frozen input
+hashes, C2 training-summary and checkpoint hashes, and both exported CSV hashes.
+Compare slice metrics with C2 epoch 3 (allowing numerical tolerance); any unexpected
+difference is investigated. No accuracy floor is imposed for C3 engineering acceptance.
+
+AI disclosure: Codex implemented C3 and six tests, including mean aggregation,
+threshold ties, invalid groups, hash/provenance rejection, no test-image access,
+repeat inference and output protection. Tests first failed on the missing API;
+after implementation all 55 local tests passed. No real MRI/CUDA C3 run was
+performed locally. C3 remains pending cluster acceptance; no commit in this turn.
+
+
+### C3 acceptance — 25 October 2026
+
+Job 694432 completed (0:0) on A100-PCIE-40GB in 34 seconds. Prediction including
+two passes and checks took 7.32s; peak CUDA allocated/reserved was 155.93/202 MiB.
+The returned cluster evidence reports unchanged parameters, repeat agreement and
+maximum probability difference 0. Reads: train=0, validation=5440, test=0.
+
+Independent local acceptance matched all 2720 unique slice paths and labels to
+the frozen validation manifest, verified 136 unique patients (NC92/AD44), each
+with exactly 20 slices from one scan, and recalculated every patient mean and
+threshold decision. All per-class metrics, accuracy and macro-F1 were recomputed;
+AUROC was independently calculated by positive-negative probability comparisons.
+Ten local file hashes match (five code, two inputs, two CSVs, C2 summary); the
+checkpoint hash agrees with the accepted C2 record. The checkpoint itself remains
+on the cluster. Repeat/unchanged-state claims use the saved run evidence.
+
+| Level | Accuracy | Macro-F1 | AD AUROC | AD recall |
+| --- | --- | --- | --- | --- |
+| Slice | 67.574% | 0.405419 | 0.631629 | 0.227% |
+| Patient | 67.647% | 0.403509 | 0.689476 | 0% |
+
+Slice metrics exactly match C2 epoch 3. Patient confusion matrix is [[92,0],[44,0]]:
+all patients are predicted NC at threshold 0.5. This passes inference/aggregation
+engineering checks, not classifier performance requirements. These are validation
+results from the cohort used for checkpoint selection, not final test results.
+
+Cluster: 55 tests passed (19.684s); fresh local acceptance: 55 passed (6.773s).
+Shell syntax and diff checks passed. Private evidence remains under
+final_report/adni_manifest_local/c3_validation/ and is excluded from Git.
+Codex independently audited saved outputs and reran local tests; it did not rerun
+remote predictions. Next plan a longer CNN baseline and controlled validation-only
+experiments for low AD recall, retaining the existing split, C2/C3 evidence and
+sealed test set. No additional training or threshold tuning was done in acceptance.
