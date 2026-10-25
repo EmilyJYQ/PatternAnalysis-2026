@@ -92,3 +92,12 @@ e4-slurm-*.out
 e4_summary.json
 e4_error.log
 comparison_A42_B42.csv
+
+# Private E5 multi-seed evidence
+/e5_pairs*/
+e5-slurm-*.out
+e5_summary.json
+e5_error.log
+runs.csv
+paired_differences.csv
+aggregate.csv

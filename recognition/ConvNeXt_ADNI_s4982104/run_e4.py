@@ -15,11 +15,11 @@ def load(path):
     return json.loads(Path(path).read_text())
 
 
-def validate_arm(root, mode, epochs):
+def validate_arm(root, mode, epochs, seed=42):
     root=Path(root);t=load(root/'training/training_summary.json');p=load(root/'prediction_full/prediction_summary.json')
     require(t['status']==p['status']=='passed','Arm failed')
     require(t['completed_epochs']==len(t['history'])==epochs,'Incomplete epochs')
-    for key,value in dict(epochs=epochs,seed=42,batch_size=16,learning_rate=0.001,class_weighting=mode).items():
+    for key,value in dict(epochs=epochs,seed=seed,batch_size=16,learning_rate=0.001,class_weighting=mode).items():
         require(t['config'][key]==value,f'Protocol mismatch: {key}')
     require(t['config']==load(root/'training/config.json'),'Config file mismatch')
     history=[json.loads(line) for line in (root/'training/epochs.jsonl').read_text().splitlines()]
@@ -69,8 +69,8 @@ def metric_row(t,p):
         patient_ad_true_positive=m['confusion_matrix'][1][1],patient_nc_false_positive=m['confusion_matrix'][0][1])
 
 
-def compare_arms(a_dir,b_dir,epochs=30):
-    a,ap=validate_arm(a_dir,'none',epochs);b,bp=validate_arm(b_dir,'balanced',epochs)
+def compare_arms(a_dir,b_dir,epochs=30,seed=42):
+    a,ap=validate_arm(a_dir,'none',epochs,seed);b,bp=validate_arm(b_dir,'balanced',epochs,seed)
     for k,v in a['config'].items():
         if k not in ('class_weighting','class_weight_details'):require(v==b['config'][k],f'A/B config mismatch: {k}')
     require(a['versions']==b['versions'] and a['gpu_name']==b['gpu_name'],'A/B runtime mismatch')
@@ -83,8 +83,8 @@ def compare_arms(a_dir,b_dir,epochs=30):
     ac=a['config']['class_weight_details'];bc=b['config']['class_weight_details']
     require(ac['patient_counts']==bc['patient_counts'] and ac['slice_counts']==bc['slice_counts'],'A/B training counts mismatch')
     n=sum(bc['patient_counts'].values());require(bc['weights']==[n/(2*bc['patient_counts'][k]) for k in ('NC','AD')],'B weights mismatch')
-    comparison={'A42':metric_row(a,ap),'B42':metric_row(b,bp)}
-    delta={k:comparison['B42'][k]-comparison['A42'][k] for k in comparison['A42'] if k.startswith('patient_') and comparison['A42'][k] is not None and comparison['B42'][k] is not None}
+    comparison={f'A{seed}':metric_row(a,ap),f'B{seed}':metric_row(b,bp)}
+    delta={k:comparison[f'B{seed}'][k]-comparison[f'A{seed}'][k] for k in comparison[f'A{seed}'] if k.startswith('patient_') and comparison[f'A{seed}'][k] is not None and comparison[f'B{seed}'][k] is not None}
     return dict(comparison=comparison,delta_B_minus_A=delta,
                 paired_checks=dict(initialization_equal=True,all_epoch_orders_equal=True,
                                    other_config_equal=True,code_inputs_runtime_equal=True,validation_unweighted=True))

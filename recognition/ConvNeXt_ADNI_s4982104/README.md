@@ -1190,3 +1190,174 @@ based on these results. These are validation results used for model selection,
 not final test estimates. Private evidence: final_report/adni_manifest_local/e4_B42/.
 Codex audited returned evidence and reran local tests; no remote training or E5
 execution occurred in this acceptance turn.
+
+
+## E5 paired seeds 43/44 and three-seed aggregation
+
+E5 passed cluster acceptance on 25 October 2026. run_e5.py runs A43, B43, A44, B44 in that
+order, 30 epochs each from scratch, with batch16/Adam lr0.001 and the fixed split.
+Only the training seed changes between pairs; the patient split stays seed42.
+A uses none and B uses balanced class weighting; all validation losses remain
+unweighted for checkpoint selection. No threshold/scheduler/augmentation changes.
+Each new full-best checkpoint gets C3 repeat validation prediction. The first3
+snapshot remains saved/checked but is not separately predicted in E5.
+
+A42/B42 are read-only inputs from E3 job694924 and E4 job695456. Preflight checks
+the accepted summaries, reference chains, CSVs, source and data before any new
+training. Checks are repeated after all four runs. Each pair must have identical
+initial parameters and all epoch batch orders; software/GPU, source/input hashes,
+other settings and prediction configuration match across all six runs.
+
+run_e4.validate_arm/compare_arms now accept an optional seed argument (default42)
+to reuse the same checks for seeds43/44. Historical runner SHA-256 consequently
+changes; original E4 evidence is retained unchanged and the new E5 summary records
+both orchestration-source hashes. train.py/predict.py and their recorded dependencies
+are unchanged; existing E4 behavior and tests still pass.
+
+Outputs include six rows in runs.csv, three paired B-minus-A rows in
+paired_differences.csv, and A/B/paired-difference mean and sample standard deviation
+(ddof=1, n=3) in aggregate.csv. Patient-level metrics and counts are aggregated;
+per-run training/prediction time and CUDA peaks are retained in runs.csv. Slice
+metrics remain in each prediction summary. Undefined metrics remain null with
+n_available recorded; no seed is silently dropped or replaced with zero.
+
+The predeclared exploratory rule is true only if AD recall improves in at least
+2/3 pairs, mean AD recall and balanced accuracy are higher, and mean macro-F1 is
+not lower. candidate_for_further_validation=false is a valid experimental outcome,
+not a failed job. This is not a statistical-significance or clinical-effectiveness
+claim: all seeds share the same validation patients and checkpoint selection data.
+
+### Run one E5 batch job
+
+Sync run_e5.py, run_e5.slurm, the updated run_e4.py and all tests. Also ensure current
+train.py, predict.py, modules.py, dataset.py, check_dataloader.py, check_cnn.py,
+run_e2.py and run_e3.py are present. Activate the established cluster environment:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_e5.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+Defaults read $HOME/comp3710-data/adni/e3_A42_694924/run and
+$HOME/comp3710-data/adni/e4_B42_695456/run. If moved, pass these run directories as
+the second and third script arguments. Do not point at their training subdirectories.
+The job runs all 73 tests, then four training/prediction runs sequentially and
+aggregates them with seed42. Account/partition comp3710, one GPU, --mem=0, one-hour
+ceiling. Prior timings suggest roughly 20–30 minutes; actual occupancy determines
+cost (roughly 0.4 GPU-hours is only an estimate). No separate C3 or seed42 job.
+On failure it stops, retains finished runs and saves failure evidence; it does not
+retry or overwrite runs automatically. Inspect partial results before resubmitting.
+
+After completion replace JOB_ID and save:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS \
+  > "$HOME/comp3710-data/adni/e5_pairs_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+Return to local final_report/adni_manifest_local/e5_pairs/:
+
+```text
+job_id.txt
+test_results.txt
+slurm_status_JOB_ID.txt
+e5-slurm-JOB_ID.out
+run/
+  e5_summary.json
+  runs.csv
+  paired_differences.csv
+  aggregate.csv
+  A43/  (same structure for B43, A44, B44)
+    training/
+      config.json
+      training_summary.json
+      epochs.jsonl
+      training.log
+      first3/training_summary.json
+    prediction_full/
+      prediction_summary.json
+      prediction.log
+      slice_predictions.csv
+      patient_predictions.csv
+```
+
+Other than the scheduler log (project directory), files are in
+$HOME/comp3710-data/adni/e5_pairs_JOB_ID/. All .pt files stay on the cluster;
+private CSVs are ignored by Git. Existing local E3/E4 evidence supplies seed42,
+so do not duplicate it. Return e5_error.log and partial outputs on failure.
+
+Acceptance: COMPLETED/0:0 and 73 tests pass; four new complete 30-epoch runs, each
+with 244800 train/81600 validation/0 test training reads, plus 0/5440/0 prediction
+reads. Total NEW reads 979200/348160/0. Each prediction exports 2720 slices/136
+patients, 20 per patient, with repeat/state checks passing. Best epochs/prefixes,
+source/input/checkpoint/output/reference hashes and all three pairing checks must
+match. Six run rows, three paired differences and sample statistics/decision must
+be independently reproducible; no missing/duplicate seed and no seed-selection
+based on outcomes. E6 interpretation follows acceptance; the 80% accuracy target
+is not a prerequisite for valid execution.
+
+AI disclosure: Codex implemented E5 orchestration/Slurm, generalized E4 validation
+helpers without changing default42 behavior, and added four tests. Tests first
+failed for the missing module; all 73 passed after implementation (14.241s),
+including known mean/sample-SD/decision cases, complete four-run integration,
+reference immutability and missing/tampered reference rejection. Actual saved
+A42/B42 evidence passed read-only preflight. Shell syntax/diff checks passed;
+no real E5 training or commit occurred in this preparation turn.
+
+
+### E5 acceptance and three-seed findings — 25 October 2026
+
+Job 695688 completed (0:0) in 22m14s (0.3706 GPU-hours); the E5 sequence took
+1285.97s. All four new 30-epoch runs and best-checkpoint predictions passed.
+Cluster tests: 73 passed (42.117s); fresh local tests: 73 passed (14.607s).
+Shell syntax/diff checks passed. New reads total 979200 train/348160 validation/0
+test; historical seed42 was reused without retraining. CUDA allocated peaks are
+about 277.51–277.52 MiB, reserved 518 MiB per run.
+
+Independent audit checked all six runs against the frozen manifest and source/
+input/output/reference hashes; every prediction has 2720 unique slices, 136
+patients and 20 slices per patient. All patient means, classes, per-class metrics,
+accuracy, macro-F1 and AUROC were recomputed from CSVs; AUROC used independent
+positive-negative probability comparisons. Every paired initialization and all
+30 batch orders match, other conditions/runtime match, and prefix/best selection,
+repeat/state checks, six rows, three deltas and sample statistics agree. Weight
+bytes remain on the cluster; local audit checked their recorded provenance links,
+not another physical checkpoint reload.
+
+| Seed | A best epoch | B best epoch | A AD recall | B AD recall | B−A recall | NC false positives A→B |
+| --- | --- | --- | --- | --- | --- | --- |
+| 42 | 29 | 27 | 20/44 = 45.455% | 19/44 = 43.182% | −2.273 pp | 14→9 |
+| 43 | 24 | 20 | 21/44 = 47.727% | 29/44 = 65.909% | +18.182 pp | 13→18 |
+| 44 | 26 | 25 | 20/44 = 45.455% | 25/44 = 56.818% | +11.364 pp | 13→13 |
+
+Patient-level means ± sample SD across the three seeds:
+
+| Metric | A ordinary loss | B weighted loss |
+| --- | --- | --- |
+| Accuracy | 72.79 ± 0.74% | 75.74 ± 0.74% |
+| AD recall | 46.21 ± 1.31% | 55.30 ± 11.44% |
+| NC specificity | 85.51 ± 0.63% | 85.51 ± 4.90% |
+| AD precision | 60.40 ± 1.48% | 65.12 ± 3.13% |
+| Macro-F1 | 0.6666 ± 0.0091 | 0.7090 ± 0.0263 |
+| Balanced accuracy | 65.86 ± 0.86% | 70.41 ± 3.34% |
+| AUROC | 0.8069 ± 0.0218 | 0.8053 ± 0.0094 |
+
+B improves AD recall in 2/3 pairs; mean paired gain is 9.09 percentage points
+(sample SD 10.41 pp), corresponding to four additional AD detections per run on
+average. Mean NC false positives remain 13.33, though individual seeds trade off
+differently. Mean balanced accuracy increases 4.55 pp and macro-F1 0.04243.
+Thus the predeclared candidate_for_further_validation rule is satisfied.
+
+Conclusion: in this fixed validation cohort and three-seed protocol, class weighting
+improves average AD recall and merits further validation. It does not improve every
+seed; recall variability increases, and mean AUROC does not improve (−0.00165).
+This is not statistical significance, an independent clinical sample, a final test
+estimate or proof that weighting improves calibration. All accuracies remain below
+80%. Do not cherry-pick B43 or retune thresholds after these observations.
+
+E5 is accepted; E6 interpretation is recorded here. Next carry this result into
+the CNN/ConvNeXt comparison and calibration/referral planning under the fixed split,
+with a recorded model/checkpoint selection rule before any final test evaluation.
+No new training, threshold change or test evaluation occurred in acceptance.
+Evidence remains private in final_report/adni_manifest_local/e5_pairs/. Codex
+independently audited returned outputs and reran local tests, not remote training.
