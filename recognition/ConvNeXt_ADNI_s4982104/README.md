@@ -1045,3 +1045,148 @@ same selection/prediction protocol, then the paired seed43/44 runs. No E4 run or
 protocol change was performed here. Private evidence is retained under
 final_report/adni_manifest_local/e3_A42/. Codex audited saved evidence and reran
 local tests; it did not perform remote training or alter original run outputs.
+
+
+## E4 B42 weighted 30-epoch run and paired A42 comparison
+
+E4 real B42 execution and paired A42 comparison passed acceptance on 25 October 2026. train.py,
+predict.py and the accepted E3 runner are unchanged. run_e4.py fixes 30 epochs,
+seed42, batch16, Adam lr0.001 and balanced class weights from the training cohort.
+Validation/checkpoint selection remains unweighted, with first-epoch tie breaking.
+
+Before training, read-only preflight checks the existing E3 A42 full training,
+prediction and E3 summaries, CSV hashes, best epoch, fixed configuration, source
+and input hashes. Default A42 source is the run directory from job 694924. The
+A42 reference is never trained again or rewritten; it must remain unchanged during
+E4. Its recorded code must match current train/predict dependencies. If preflight
+fails, inspect evidence/synchronization rather than silently recomputing A42.
+
+B42 saves first3 and full-best checkpoints and evaluates both with C3. The primary
+comparison uses A42 full-best versus B42 full-best, not the one-epoch E2 model.
+All 30 epoch order hashes and the initialization hash must match. Runtime versions,
+GPU name, input/source hashes, prediction settings and other training settings must
+match; only class_weighting/class_weight_details may differ. The comparison reports
+patient accuracy, AD recall/precision, NC specificity, macro-F1, balanced accuracy,
+AUROC, true AD detections and NC false positives. e4_summary.json includes B-minus-A
+differences in raw metric units (multiply fractions by 100 for percentage points).
+One seed cannot establish the planned multi-seed effectiveness conclusion.
+
+### Cluster submission
+
+Sync run_e4.py, run_e4.slurm and the entire tests directory. Keep the current
+train.py, predict.py, modules.py, dataset.py, check_dataloader.py, check_cnn.py,
+run_e2.py and run_e3.py available for the full suite. Activate the existing cluster
+Python environment and submit on the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_e4.slurm "$(python -c 'import sys; print(sys.executable)')"
+```
+
+Default reference: $HOME/comp3710-data/adni/e3_A42_694924/run. If moved, pass its
+actual run directory as the second argument (not its training directory).
+The script runs 69 tests, then all E4 steps in one GPU job; no separate C3 job.
+Account/partition comp3710, --mem=0, one-hour ceiling. Output:
+$HOME/comp3710-data/adni/e4_B42_JOB_ID/. After completion replace JOB_ID and save:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,MaxRSS \
+  > "$HOME/comp3710-data/adni/e4_B42_JOB_ID/slurm_status_JOB_ID.txt"
+```
+
+Return to local final_report/adni_manifest_local/e4_B42/ (preserve structure):
+
+```text
+job_id.txt
+test_results.txt
+slurm_status_JOB_ID.txt
+e4-slurm-JOB_ID.out
+run/
+  e4_summary.json
+  comparison_A42_B42.csv
+  training/
+    config.json
+    training_summary.json
+    epochs.jsonl
+    training.log
+    first3/training_summary.json
+  prediction_first3/
+    prediction_summary.json
+    prediction.log
+    slice_predictions.csv
+    patient_predictions.csv
+  prediction_full/
+    prediction_summary.json
+    prediction.log
+    slice_predictions.csv
+    patient_predictions.csv
+```
+
+Scheduler output is in the project directory; other files are under e4_B42_JOB_ID.
+Keep both .pt files on the cluster. Existing local E3 evidence is reused for
+acceptance, so no second transfer of A42 is needed. Private CSVs are ignored by Git.
+If failed, return e4_error.log and partial logs; preserve failed run directories.
+
+Acceptance: COMPLETED/0:0, 69 tests pass, all B summaries and pair checks pass on
+CUDA; complete 30 epochs, correct [408/550,408/266] weights, unweighted validation,
+correct first3 and full-best selection, matching A/B initialization/all epoch order
+hashes and other conditions. Each prediction exports 2720 slices/136 patients and
+passes repeat/state checks. B-only reads total train244800/validation92480/test0;
+A42 reference reading only reads metadata/CSVs, never MRI pixels. Recompute means,
+metrics and comparison table against the accepted A42 epoch29 results. Evidence
+integrity and complete execution determine engineering acceptance; superiority is
+not required, and no threshold or experimental protocol changes are made here.
+
+AI disclosure: Codex added run_e4.py/run_e4.slurm and four tests. After the missing
+module failure, implementation passed all 69 local tests (11.916s). Tests cover
+paired end-to-end execution, A42 file preservation, missing/tampered reference
+rejection before training and training-order mismatch rejection. The actual saved
+E3 evidence passed read-only preflight locally; no MRI/GPU run was performed.
+Shell syntax/diff checks passed. No commit was made in this preparation turn.
+
+
+### E4 acceptance — 25 October 2026
+
+Job 695456 completed 30 epochs (0:0), wall time 6m19s (0.1053 GPU-hours).
+Training took 329.09s; the complete E4 sequence took 337.40s. Peak CUDA allocated/
+reserved memory was 277.52/518 MiB. Cluster tests: 69 passed (34.219s); fresh local
+acceptance: 69 passed (11.683s). Shell syntax and diff checks passed.
+
+Independent audit verified source/input/output/reference hashes, unchanged A42
+reference links, identical initialization and all 30 training batch orders,
+matching runtime/configuration except weighting, complete histories, prefix and
+best selection, and total B reads 244800/92480/0. Both B prediction sets cover
+2720 slices and 136 patients; all patient means, threshold classes, confusion-
+derived metrics and AUROC were independently recomputed, alongside A42 full-best
+outputs. Summary, comparison CSV and B-minus-A differences agree. Checkpoint hashes
+link saved summaries; actual weights remain on the cluster and were not locally
+reloaded. Repeat/state results rely on saved cluster checks.
+
+| Patient-level metric | A42 ordinary loss | B42 weighted loss |
+| --- | --- | --- |
+| Selected epoch | 29 | 27 |
+| Unweighted validation loss | 0.509784 | 0.525001 |
+| Accuracy | 72.059% | 75.000% |
+| AD recall | 20/44 = 45.455% | 19/44 = 43.182% |
+| NC specificity | 78/92 = 84.783% | 83/92 = 90.217% |
+| AD precision | 58.824% | 67.857% |
+| Macro-F1 | 0.658472 | 0.678889 |
+| Balanced accuracy | 65.119% | 66.700% |
+| AUROC | 0.811759 | 0.798172 |
+
+A confusion [[78,14],[24,20]]; B [[83,9],[25,19]]. B reduces NC false positives
+by five but identifies one fewer AD patient; net four additional correct patients,
+accuracy +2.941 percentage points. AD recall is -2.273 points, NC specificity
++5.435 points, macro-F1 +0.020417 and AUROC -0.013587. This is a mixed tradeoff:
+it does not demonstrate improved AD recall or justify adopting weighting after
+one seed. The 80% accuracy target remains unmet. No thresholds or selection rules
+were changed. B epoch 27 is selected by validation loss, not by the largest F1.
+B first3-best is epoch 3 (patient accuracy 65.441%, recall 47.727%, AUROC 0.690958).
+B full-best slice accuracy is 73.015%, macro-F1 0.655219, AUROC 0.775120.
+
+Next E5: paired A43/B43 and A44/B44 with the frozen 30-epoch protocol, then report
+all three pairs and predeclared aggregate criteria. Do not select or discard seeds
+based on these results. These are validation results used for model selection,
+not final test estimates. Private evidence: final_report/adni_manifest_local/e4_B42/.
+Codex audited returned evidence and reran local tests; no remote training or E5
+execution occurred in this acceptance turn.

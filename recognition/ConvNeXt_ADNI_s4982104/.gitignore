@@ -85,3 +85,10 @@ e3-slurm-*.out
 e3_summary.json
 e3_error.log
 comparison.csv
+
+# Private E4 weighted comparison evidence
+/e4_B42*/
+e4-slurm-*.out
+e4_summary.json
+e4_error.log
+comparison_A42_B42.csv
