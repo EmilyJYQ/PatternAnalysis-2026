@@ -1599,3 +1599,20 @@ Weight binaries stay on the cluster. AI assistance covered review of the existin
 implementation and evidence, independent metric/hash checks, crop inspection,
 local tests, documentation and the authorized commit; no remote training was
 performed during acceptance.
+
+
+## N4: one learning-rate stability control
+
+`run_n4.py` runs exactly three epochs from the same verified pretrained initialization as N3 (job 701651). The only changed training setting is AdamW learning rate **3e-5** instead of 1e-4. Seed42, batch4, FP32, full fine-tuning, weight decay0.01, weighted training/unweighted validation, preprocessing and selection remain fixed. N3 and the shared training/model/prediction sources are unchanged.
+
+N3 source, configuration, inputs, initial state and environment must match before training; all three batch-order hashes must match. A forward observer saves the existing validation probabilities and logits in `diagnostics/epoch_1` through `epoch_3`, with patient means and hashes. This does not perform extra image reads or consume training RNG. Logits permit stable CE reconstruction when float32 probabilities round to zero or one. Test image reads remain zero.
+
+Submit once after syncing all code and tests (do not copy the Mac virtual environment):
+```bash
+sbatch run_n4.slurm /home/Student/s4982104/comp3710-env/bin/python
+```
+The job uses the existing environment, one GPU, comp3710 account/partition, mem=0 and a one-hour limit. Evidence is written to `~/comp3710-data/adni/convnext_stability_lr3e5_JOB_ID/`. Never reuse an existing output directory. Preserve failures; do not automatically retry.
+
+Expected total reads: train24480, validation13600, test0 (three full training/validation epochs plus two best-checkpoint validation passes). Export all JSON/CSV/log/text and Slurm evidence, including per-epoch diagnostics, to the private repository-external `final_report/adni_manifest_local/convnext_stability_lr3e5/`; keep weights on Rangpur.
+
+`epoch_comparison.csv` reports all three slice-level epochs; `best_patient_comparison.csv` compares independently reloaded best checkpoints; `epoch_patient_comparison.csv` leaves unretained N3 epoch2/3 patient metrics empty. The joint diagnostic signal requires lower final validation CE **and** narrower AD and NC recall ranges than N3. It does not automatically adopt the new learning rate: examine balanced accuracy, AUROC and best-patient tradeoffs. Formal30-epoch/multi-seed settings and budget remain unfrozen.
