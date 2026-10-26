@@ -1361,3 +1361,170 @@ with a recorded model/checkpoint selection rule before any final test evaluation
 No new training, threshold change or test evaluation occurred in acceptance.
 Evidence remains private in final_report/adni_manifest_local/e5_pairs/. Codex
 independently audited returned outputs and reran local tests, not remote training.
+
+## ConvNeXt preparation and small-batch check (N0–N2)
+
+N0 weight preparation was accepted on 26 October 2026 from the returned
+`convnext_pretrained_check` summary and terminal log: Python 3.11.13,
+PyTorch 2.14.0+cu130, TorchVision 0.29.0+cu130, original 1000-class strict CPU
+load passed, file size 114419221 bytes. Accepted full SHA256:
+`983f1562536e84ff750a1576fb08e54de751dbf2e17c0d8a4a13704341fdcd3d`.
+The weight binary was not returned locally; N2 independently rehashes it on the
+cluster. The reported `zsh: read-only variable: status` was in the local output
+collection wrapper after the remote summary was saved. Use `command_exit_code`
+for shell exit-code variables; the Python JSON field `status` is valid.
+
+### Fixed N1 protocol
+
+- `modules.py` implements ConvNeXt-Tiny in PyTorch: stage depths 3/3/9/3,
+  widths 96/192/384/768, 7x7 depthwise convolution, LayerNorm (epsilon 1e-6),
+  channel MLP, layer scale 1e-6 and row-wise stochastic depth up to 0.1.
+  This is an attributed adaptation of the architecture/state layout, not a claim
+  that the architecture is original. See [third-party notices](THIRD_PARTY_NOTICES.md),
+  [Liu et al., CVPR 2022](https://arxiv.org/abs/2201.03545), and the
+  [TorchVision reference](https://github.com/pytorch/vision/blob/main/torchvision/models/convnext.py).
+- Use local `ConvNeXt_Tiny_Weights.IMAGENET1K_V1` weights. First strictly load
+  all 1000-class tensors and compare eval outputs with the official model on a
+  validation smoke batch and a seeded random tensor (rtol 1e-5, atol 1e-6).
+  Then replace only the final linear layer with a freshly initialized 768→2
+  head. Fine-tune all layers. The script never downloads weights or silently
+  falls back to random initialization.
+- Convert the original grayscale PIL image to three identical RGB channels,
+  bilinearly resize the short edge to 236 with antialias=True, center crop
+  224×224, convert to float32 /255, normalize by mean
+  [0.485,0.456,0.406] and std [0.229,0.224,0.225]. No intermediate CNN resize.
+  Compare resulting tensors exactly against the installed official preset.
+  Train/validation use the same deterministic processing, no random image
+  augmentation. Stochastic depth remains part of the model's training behavior.
+- Seed 42, batch 4, FP32, two updates, AdamW lr=1e-4 and weight_decay=0.01,
+  deterministic algorithms enabled, TF32 disabled. Train-only patient-balanced
+  CE weights (NC, AD) are [408/550,408/266]; validation CE is unweighted.
+  Check finite logits/loss/gradients/parameters, nonzero total gradient norm,
+  actual updates to both stem and head, unchanged validation state/no gradients,
+  and identical saved/reloaded predictions within recorded tolerances.
+- Same frozen 60/20/20 patient manifest; require 408/136/136 patients,
+  8160/2720/2720 slices, 20 slices per patient and expected class counts.
+  Test metadata is checked, but test image pixels are never opened.
+- Select two training patients/class with an independent `random.Random(42)`
+  over sorted IDs. Preview their first/middle/last lexicographic file paths
+  (selection positions, **not verified anatomical slice order**). Save original,
+  resize-with-crop-box and cropped panels plus a private JSON mapping.
+  The script does not decide whether brain tissue was removed: visual review
+  is required before accepting N2. An apparent crop problem triggers documented
+  investigation and a new preprocessing version/short check, not silent changes.
+- Record optimization timing with diagnostics, plus inference timing after two
+  warm-ups and five repeats, synchronized on CUDA, excluding loading,
+  preprocessing and transfers. These are smoke estimates, not the final fair
+  latency benchmark. Report allocated/reserved CUDA peaks; enforce ≤20 GiB.
+  Official-model comparison runs on CPU; peak GPU evidence covers the self model,
+  optimizer/diagnostics, validation and reload, not two concurrent GPU models.
+
+The comparison plan remains ConvNeXt with balanced loss versus CNN-B primarily,
+with CNN-A retained as the loss ablation. Evaluation split, patient averaging
+and 0.5 threshold remain fixed. Pretraining, input processing and optimizer
+are explicit differences: this compares complete approaches, not architecture
+alone. Full training/validation support in `train.py` and `predict.py` remains
+N3 work; those entry points still run the CNN. N1 checkpoint is a smoke artifact,
+not a selected model or an accuracy result.
+
+### Run N2 on the cluster
+
+Synchronize `modules.py`, `dataset.py`, `check_convnext.py`, `run_n2.slurm`,
+`requirements.txt`, `THIRD_PARTY_NOTICES.md`, `README.md`, `.gitignore`, and the
+complete `tests/` folder. Keep existing `train.py`, `check_dataloader.py` and
+other helper files present. Do not copy the Mac `.venv` or install Mac wheels.
+The verified cluster environment already has torch/torchvision; no reinstall
+is required. Local requirements pin torch==2.14.0 and torchvision==0.29.0;
+record platform-specific CUDA build suffixes separately.
+
+On the login node:
+
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_n2.slurm /home/Student/s4982104/comp3710-env/bin/python
+```
+
+This submits one GPU, account/partition `comp3710`, `--mem=0`, 20-minute limit.
+The script first runs the full offline test suite, then the real check on CUDA.
+It uses the already prepared files at:
+
+```text
+/home/Student/s4982104/comp3710-data/pretrained/convnext_tiny-983f1562.pth
+/home/Student/s4982104/comp3710-data/pretrained/convnext_tiny_weights_summary.json
+```
+
+Evidence is saved under
+`$HOME/comp3710-data/adni/convnext_smoke_check_<job_id>/`.
+Do not reuse a previous output directory. If the check fails, retain the failed
+run and return its logs first. If a verified memory issue needs a smaller batch,
+submit a new job with optional second argument `2`, then `1` if necessary;
+do not simultaneously change resolution/precision.
+
+After completion, replace `JOB_ID` with the actual numeric ID:
+
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,AllocTRES,MaxRSS
+```
+
+Return to local `final_report/adni_manifest_local/convnext_smoke_check/`:
+
+1. `job_id.txt`, `exit_code.txt`, `test_results.txt` and saved `sacct` output.
+2. `n2-slurm-<job_id>.out` and `.err` from the project directory.
+3. `run/convnext_check_summary.json`, `run/convnext_check.log`, `run/config.json`.
+4. `run/crop_previews.json` and the complete `run/crop_previews/` PNG folder.
+
+Leave `run/smoke_checkpoint.pt` and pretrained `.pth` on the cluster. Do not
+commit images, patient mappings or weights. The summary records the checkpoint
+hash and reload result; a local reviewer without the binary cannot independently
+reload it. N2 acceptance requires numerical checks, source/input hashes and
+counts, real weight identity, GPU resources, successful Slurm exit, and visual
+review of the crop examples. No accuracy or loss-decrease target applies to two
+updates; 80% remains the eventual classification target.
+
+### AI usage: N0 acceptance and N1 implementation
+
+Codex inspected the returned weight summary/log, implemented and tested the
+ConvNeXt adaptation, preprocessing and checker, and drafted these instructions.
+The implementation references the official architecture and uses the official
+model as a numerical oracle. Local tests use explicitly synthetic random
+reference states and generated images, without downloading pretrained weights
+or reading ADNI test images. Passing those tests is not a claim of completed
+real-weight GPU validation; the user runs N2 and returns evidence for acceptance.
+
+Local N1 verification on 26 October 2026: 81 tests passed in 62.453 seconds (8 new tests); shell syntax and whitespace checks passed. Real-data/GPU N2 and crop-content review are pending. No commit or push was performed in this preparation turn.
+
+### N2 accepted — 27 October 2026
+
+Job 700565 completed (0:0) in 2m57s, approximately 0.04917 GPU-hours including
+tests. Cluster 81 tests passed in 148.552s; local acceptance reran all 81 in
+61.494s. Source/input/output hashes matched; all read paths matched the frozen
+split. Old directory names containing `test` are provenance, not the current
+split assignment. Reads: train 8, validation 4, test 0, plus 12 training preview
+reads. Original 1000-class official/self-model outputs and binary checkpoint
+reload both had maximum difference zero. Both optimization steps updated stem
+and head; validation did not change state or create gradients.
+
+All 12 crop previews (four training patients, two per class) were independently
+viewed again. No obvious additional clipping of visible brain tissue, new
+stretching or blank output was found; removed borders were predominantly black
+background. Existing irregular lower edges are visible in original images too.
+Recropping the displayed original panels reproduced all 12 output panels exactly.
+This is sampled preprocessing review, not a full-dataset quality guarantee.
+Retain the official preset for the next pilot. The original run summary remains
+unchanged; the later acceptance is recorded separately.
+
+A100 peak allocated 868.59 MiB, reserved 932 MiB; 27,821,666 trainable parameters.
+Batch-four inference averaged 8.904 ms after two warm-ups over five repeats,
+excluding I/O/preprocessing/transfers. This smoke estimate is not a final latency
+benchmark. First/second update times were 6.836/0.0936s; do not extrapolate startup
+cost into epoch estimates. Losses were 0.701318/0.690366, validation loss 0.601142;
+two updates do not establish convergence or classification performance.
+
+Pretrained/checkpoint binaries remain on the cluster; local acceptance checked
+returned evidence rather than independently reloading those binaries. Private
+acceptance evidence is under `adni_manifest_local/convnext_smoke_check/` outside
+the repository. N3 is next: add ConvNeXt full training/validation and prediction
+support, retain the current smoke configuration for a three-epoch pilot, and
+measure full-epoch cost before committing to long runs. AI assistance in this
+acceptance comprised evidence/hash/manifest checks, visual inspection, tests,
+documentation and the user-authorized commit; no remote training was performed.

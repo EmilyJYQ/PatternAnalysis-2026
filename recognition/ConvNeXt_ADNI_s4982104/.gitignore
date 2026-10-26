@@ -101,3 +101,14 @@ e5_error.log
 runs.csv
 paired_differences.csv
 aggregate.csv
+
+# Private ConvNeXt weight and smoke evidence
+/convnext_pretrained_check*/
+/convnext_smoke_check*/
+convnext_tiny_weights_summary.json
+convnext_check_summary.json
+convnext_check.log
+crop_previews.json
+/crop_previews/
+n2-slurm-*.out
+n2-slurm-*.err

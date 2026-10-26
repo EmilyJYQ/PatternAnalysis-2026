@@ -103,3 +103,56 @@ class ADNISliceDataset(Dataset):
             raise RuntimeError(f'Failed to read image {path}: {type(exc).__name__}: {exc}') from exc
         return dict(image=tensor, label=torch.tensor(LABEL_MAP[record['label']], dtype=torch.long),
                     patient_id=record['patient_id'], image_id=record['image_id'], file_path=path)
+
+
+CONVNEXT_PREPROCESSING = dict(
+    color_mode='L replicated to RGB', channels=3, resize_short_edge=236,
+    crop_size=224, interpolation='bilinear', antialias=True,
+    normalization='uint8 / 255, then channel (x-mean)/std',
+    mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225],
+    image_dtype='torch.float32', label_dtype='torch.int64',
+    random_augmentation=False, backend='PIL resize/crop, TorchVision tensor conversion')
+
+
+def convnext_crop(image):
+    """Official IMAGENET1K_V1 geometry; no intermediate CNN resize.
+
+    Ref: https://docs.pytorch.org/vision/main/models/generated/torchvision.models.convnext_tiny.html
+    """
+    from torchvision.transforms import functional as F, InterpolationMode
+    rgb = image.convert('L').convert('RGB')
+    resized = F.resize(rgb, [236], interpolation=InterpolationMode.BILINEAR, antialias=True)
+    return F.center_crop(resized, [224])
+
+
+def convnext_transform(image):
+    """Deterministic official geometry and normalization for a grayscale slice."""
+    from torchvision.transforms import functional as F
+    tensor = F.convert_image_dtype(F.pil_to_tensor(convnext_crop(image)), torch.float32)
+    return F.normalize(tensor, CONVNEXT_PREPROCESSING['mean'], CONVNEXT_PREPROCESSING['std'])
+
+
+class ConvNeXtSliceDataset(ADNISliceDataset):
+    """Reuse the frozen manifest validation, read original pixels once per call."""
+    def __init__(self, manifest_path, split, summary_path=None):
+        super().__init__(manifest_path, split, summary_path)
+        self.read_calls = 0
+        self.observed_paths = []
+
+    def read_gray(self, index):
+        path = self.records[index]['file_path']
+        self.read_calls += 1
+        self.observed_paths.append(path)
+        try:
+            ImageFile.LOAD_TRUNCATED_IMAGES = False
+            with Image.open(path) as image:
+                image.load()
+                return image.convert('L')
+        except Exception as exc:
+            raise RuntimeError(f'Failed to read image {path}: {exc}') from exc
+
+    def __getitem__(self, index):
+        row = self.records[index]
+        return dict(image=convnext_transform(self.read_gray(index)),
+                    label=torch.tensor(LABEL_MAP[row['label']],dtype=torch.long),
+                    **{key:row[key] for key in ('patient_id','image_id','file_path')})
