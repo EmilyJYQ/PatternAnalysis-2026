@@ -1528,3 +1528,74 @@ support, retain the current smoke configuration for a three-epoch pilot, and
 measure full-epoch cost before committing to long runs. AI assistance in this
 acceptance comprised evidence/hash/manifest checks, visual inspection, tests,
 documentation and the user-authorized commit; no remote training was performed.
+
+## N3: three full ConvNeXt epochs
+
+`run_n3.py` reuses the tested epoch loop in `train.py` and prediction/aggregation
+functions in `predict.py`; their existing CNN entry points are unchanged.
+Fixed protocol: pretrained ConvNeXt-Tiny, all layers trainable, stochastic depth
+0.1, FP32, batch 4, seed 42, three epochs, AdamW lr=1e-4 and weight_decay=0.01.
+The deterministic N2 preprocessing is unchanged. Training-only patient-balanced
+weights are computed from the training manifest. Validation CE is unweighted;
+the lowest validation loss selects best.pt, with the earliest epoch winning ties.
+There is no augmentation, scheduler or early stopping.
+
+Checkpoint config contains the model, preprocessing, optimizer and source weight
+identity. Strict loading checks both the full expected config and fixed protocol,
+then verifies the state dictionary and synthetic-probe logits without extra MRI
+reads. Two independent model reloads predict the complete validation split;
+paths/labels/patient/scan IDs must exactly match the frozen validation manifest.
+Patient probabilities are means over 20 slices, threshold 0.5. Test pixels remain
+unread. Full epoch and prediction-pass times include loading/transfers and checks;
+they are not isolated inference-latency benchmarks. CUDA peaks are recorded
+separately for training and prediction. Slurm elapsed time times the one allocated
+GPU is the job GPU-hours, including tests and startup.
+
+Synchronize run_n3.py, run_n3.slurm, README.md, .gitignore and tests/, checking
+existing model/dataset/helper code hashes first. Keep the existing cluster venv.
+
+```bash
+sbatch run_n3.slurm /home/Student/s4982104/comp3710-env/bin/python
+```
+
+Outputs: ~/comp3710-data/adni/convnext_pilot_JOB_ID/run/{training,prediction}/
+and n3_summary.json. Each training epoch reads 8160 train / 2720 validation;
+training totals 24480 / 8160 / 0, prediction totals 0 / 5440 / 0, combined
+24480 / 13600 / 0. The prediction summaries/CSVs and training config, summaries,
+epochs.jsonl, logs, job/test/exit/Slurm records go to the private local directory
+final_report/adni_manifest_local/convnext_pilot/. Keep best.pt on the cluster.
+Output directories cannot be reused; failures retain summaries and n3_error.log.
+Full suite: `.venv/bin/python -m unittest discover -s tests -v`. Synthetic N3
+integration tests mock only the heavy pretrained model and do not claim real
+ConvNeXt/GPU success; N2 supplies that separate evidence.
+
+
+### N3 acceptance (27 October 2026)
+
+Job 701651 completed with exit 0:0 on one A100 in 12m02s (0.201 GPU-hours).
+All 87 tests passed locally and on the cluster. Independent acceptance verified
+source/input/output hashes, all epoch batch-order hashes, exact validation
+membership, 20-slice patient means, and both levels of metrics including AUROC.
+The two checkpoint-reload predictions agreed exactly; test pixel reads were zero.
+
+Minimum unweighted validation loss selected epoch 1. Patient accuracy was 79.41%,
+AD recall 70.45%, AD precision 67.39%, NC specificity 83.70%, macro-F1 0.7675,
+and AUROC 0.8649. Confusion matrix (true/predicted NC, AD) was
+[[77, 15], [13, 31]]; slice accuracy was 76.25%. These are pilot validation results,
+not final test results or evidence that the 80% target has been achieved.
+Validation loss rose from 0.8194 to 0.8414 and 2.9240 while training loss fell.
+N4 must investigate stability/overfitting before freezing long-run settings.
+
+N3 retained the N2 preprocessing source/config. The same 12 N2 crop previews
+were rechecked and their hashes were unchanged; no obvious additional tissue
+clipping was observed. No new N3 preview sample was produced. Mean full-epoch
+time was 178.11s; peak training allocated memory was 870.00 MiB. Thirty epochs
+for three seeds would take about 4.45 GPU-hours before additional overhead,
+requiring the initial three-hour ConvNeXt allocation to be revisited.
+
+N3 evidence and independent acceptance are stored privately in
+adni_manifest_local/convnext_pilot/; convnext_smoke_check/ retains N2 evidence.
+Weight binaries stay on the cluster. AI assistance covered review of the existing
+implementation and evidence, independent metric/hash checks, crop inspection,
+local tests, documentation and the authorized commit; no remote training was
+performed during acceptance.
