@@ -1616,3 +1616,134 @@ The job uses the existing environment, one GPU, comp3710 account/partition, mem=
 Expected total reads: train24480, validation13600, test0 (three full training/validation epochs plus two best-checkpoint validation passes). Export all JSON/CSV/log/text and Slurm evidence, including per-epoch diagnostics, to the private repository-external `final_report/adni_manifest_local/convnext_stability_lr3e5/`; keep weights on Rangpur.
 
 `epoch_comparison.csv` reports all three slice-level epochs; `best_patient_comparison.csv` compares independently reloaded best checkpoints; `epoch_patient_comparison.csv` leaves unretained N3 epoch2/3 patient metrics empty. The joint diagnostic signal requires lower final validation CE **and** narrower AD and NC recall ranges than N3. It does not automatically adopt the new learning rate: examine balanced accuracy, AUROC and best-patient tradeoffs. Formal30-epoch/multi-seed settings and budget remain unfrozen.
+
+
+## N5a: formal ConvNeXt entry (three-seed runs accepted)
+
+`run_n5.py` runs **one** training seed per invocation. Fixed protocol: lr3e-5,
+30epochs, AdamW/weight_decay0.01, batch4, FP32, full fine-tuning, weighted
+training CE, unweighted validation CE, no augmentation/scheduler/early stopping.
+Allowed training seeds are42/43/44; default42. The data split remains seed42.
+Every seed restarts from the same verified ImageNet weights, then uses its own
+seed for the two-class head, PyTorch/CUDA RNG and training DataLoader. There is
+no resume from the N4 best checkpoint. Optimizer defaults/actual values, initial
+state, source/input/pretrained hashes and environment are recorded.
+
+N3/N4 and shared sources are unchanged. N5 imports their reviewed utility,
+validation-observation and aggregation logic. Before MRI reads it validates the
+N4 reference summaries, configs, diagnostic CSV hashes and source/input chain.
+Environment/GPU and remaining settings must match. For seed42 the initial model
+hash and first three ordered batch hashes must match N4. First-three-epoch numeric
+metrics must satisfy **abs(actual-reference) <= 1e-6 + 1e-5*abs(reference)**;
+integer counts, confusion matrices and selected-best flags match exactly.
+Mismatch stops the run and retains its completed epochs and error evidence.
+Seeds43/44 are explicitly marked not applicable for the N4 stochastic-prefix
+check; their environment, protocol and data/source checks still apply.
+
+Every existing validation pass saves logits/probabilities and patient means in
+`run/diagnostics/epoch_1/` through `epoch_30/`; no extra image reads or training
+RNG draws. Each directory contains `slice_predictions.csv`,
+`patient_predictions.csv`, `summary.json`. Minimum validation CE selects
+`training/best.pt`; strict improvement preserves the earlier checkpoint on ties.
+A temporary file then atomic replacement protects the previous best during saves.
+Training summaries/JSONL are saved every completed epoch. Python termination
+signals produce failure evidence where the process is allowed to handle them;
+hard kills leave the already persisted epoch files and Slurm evidence.
+
+After30epochs the best checkpoint is strictly reloaded and independently
+predicted twice on validation. `metrics.csv` contains patient/slice metrics;
+`n5_summary.json` and phase summaries record timings, peak memory, hashes and
+counts. Expected reads per seed: training244800, validation87040, test0
+(training validation81600 plus independent prediction5440). Thirty diagnostic
+passes add **zero** extra reads. Test files are only inspected as manifest metadata.
+
+### Sync and first submission (commands supplied; not executed by N5a)
+
+Changed files: `run_n5.py`, `run_n5.slurm`, `tests/test_n5.py`, `README.md`,
+`.gitignore`. Sync all top-level Python files and the complete tests directory
+so shared imports and existing regression tests have matching versions; exclude
+Python caches and do not copy the local `.venv`:
+
+```bash
+cd /Users/emily/Desktop/COMP3710/PRA/final_report/PatternAnalysis-2026/recognition/ConvNeXt_ADNI_s4982104
+rsync -av --exclude='__pycache__/' --exclude='*.pyc' ./*.py run_n5.slurm tests rangpur:/home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104/
+```
+
+On the Rangpur login node, first submit **only seed42**:
+```bash
+cd /home/Student/s4982104/comp3710-code/ConvNeXt_ADNI_s4982104
+sbatch run_n5.slurm /home/Student/s4982104/comp3710-env/bin/python
+```
+
+The optional second argument is a single seed42/43/44. There is no seed loop,
+job array, automatic retry, or separate C3 submission. Slurm requests one A100,
+comp3710 account/partition, mem=0, two CPUs and a two-hour limit. It runs the full
+test suite before training. Default reference is
+`$HOME/comp3710-data/adni/convnext_stability_lr3e5_702225/run`.
+Do not change/remove N4 evidence or shared code after synchronization.
+
+### Evidence and budget
+
+Remote directory: `$HOME/comp3710-data/adni/convnext_formal_seed42_JOB_ID/`.
+For later seeds the seed number changes; every job has its own directory.
+Planned private local directory:
+`final_report/adni_manifest_local/convnext_formal/seed42_JOB_ID/`.
+Save Slurm accounting after completion:
+```bash
+sacct -j JOB_ID --format=JobID,State,ExitCode,Elapsed,AllocTRES%100,MaxRSS   > "$HOME/comp3710-data/adni/convnext_formal_seed42_JOB_ID/slurm_status_JOB_ID.txt"
+```
+Copy `job_id.txt`, `exit_code.txt`, `test_results.txt`, Slurm status,
+`n5-slurm-JOB_ID.out/.err` (from project directory), and the complete `run/`
+JSON/JSONL/CSV/log outputs. These include config/training history,
+training_summary, both levels of best predictions and their summary,
+all30 diagnostic directories, `metrics.csv`, `n5_summary.json` and any
+`n5_error.log`. **Exclude `*.pt`, `*.pt.tmp`, pretrained weights and MRI images**.
+A failed job's partial outputs must be retained; never overwrite or auto-retry.
+Use allocation elapsed time times GPU count for GPU-hours, excluding queue time.
+
+The agreed overall budget is8GPU-hours. Previously archived consumption including
+N4 is approximately1.1167GPU-hours. Three two-hour allocations would total at most
+7.1167hours with that ledger, leaving about0.8833hours; this is a planning bound,
+not a new accounting audit. N4-based mean runtime estimate is about1.486hours per
+30-epoch run; worst observed epoch plus20% contingency gives about1.791hours per
+run. Check actual seed42 time and cumulative accounting before later seeds;
+failed attempts/retries also count against the budget. This entry does not
+launch43/44 or perform the eventual three-seed CNN/ConvNeXt summary automatically.
+
+Local tests use synthetic images and a small substituted backbone. They exercise
+the actual seeded classifier initialization, optimizer,30-epoch loop, tail batch,
+selection/reload and diagnostic path, but **do not establish real GPU/MRI
+acceptance or real N4-prefix equality**. Those checks execute during seed42.
+
+
+### N5 three-seed acceptance (27 October 2026)
+
+Jobs 702352/702999/703004 (seeds 42/43/44) completed all 30 epochs with exit
+0:0. Local and all three cluster suites passed 105 tests. Independent acceptance
+checked source/input/output hashes and recomputed all 90 diagnostic sets plus
+three best-checkpoint prediction sets, including CE from logits, patient means,
+classification metrics and AUROC. Seed42's first three epochs exactly matched
+N4. Each run read train244800 / validation87040 / test0; repeated best-model
+predictions agreed exactly. Local acceptance did not reload cluster weight binaries.
+
+| Seed | Best epoch | Patient accuracy | AD recall | NC specificity | Macro-F1 | AUROC |
+| --- | --- | --- | --- | --- | --- | --- |
+| 42 | 1 | 76.47% | 84.09% | 72.83% | 0.7527 | 0.8738 |
+| 43 | 1 | 79.41% | 63.64% | 86.96% | 0.7589 | 0.8849 |
+| 44 | 1 | 76.47% | 29.55% | 98.91% | 0.6494 | 0.8708 |
+
+Mean patient accuracy was 77.45% (sample SD 1.70 percentage points), AD recall
+59.09% (SD 27.56 points), macro-F1 0.7203 (SD 0.0615), and AUROC 0.8765
+(SD 0.0074). These are validation results. All best epochs were 1; longer
+training did not improve minimum validation CE. Seed44 missed 31/44 AD patients,
+so seed42 must not substitute for the three-seed result. Seed variability is not
+a population confidence interval. The 80% final test target is not established.
+
+Formal jobs used 4.32694 GPU-hours; known cumulative project usage is 5.44361,
+leaving 2.55639 of the eight-hour budget. Next work is a unified CNN/ConvNeXt
+comparison, controlled efficiency measurement, and a written calibration/referral
+and final-test protocol. No additional training or test access is implied.
+Private evidence remains under adni_manifest_local/convnext_formal/; the alternate
+convnext_formal_seed42 copy is the same run, not another replicate. AI assistance
+covered implementation/evidence review, independent calculations, local tests,
+documentation and the authorized commit; no remote retraining during acceptance.
