@@ -1747,3 +1747,50 @@ Private evidence remains under adni_manifest_local/convnext_formal/; the alterna
 convnext_formal_seed42 copy is the same run, not another replicate. AI assistance
 covered implementation/evidence review, independent calculations, local tests,
 documentation and the authorized commit; no remote retraining during acceptance.
+
+
+### R1 patient-level evaluation and selection (27 October 2026)
+
+R1 adds an opt-in evaluator and dual-checkpoint component for future V2 runs;
+V1 training entry points and reported results are unchanged. Average each
+patient's 20 slice probabilities first, then compute equal-patient natural-log
+NLL. Clip only for NLL to [1e-7, 1-1e-7]; binary Brier and classification use
+unclipped means, with NC=0, AD=1 and threshold 0.5.
+
+`DualCheckpointSelector.consider` consumes existing validation rows and an eval
+model, selects independent minima for patient NLL and slice CE, and keeps the
+earlier epoch on ties. `load_selected` verifies configuration, provenance,
+selection metadata and file hash before strict loading. The component is tested
+with synthetic data; real training integration and per-epoch checkpoint retention
+are the next R2 task.
+
+To repeat the read-only audit, use a new output directory:
+
+```bash
+python audit_patient_selection.py --base /path/to/adni_manifest_local --output-dir /path/to/new_r1_audit
+python -m unittest discover -s tests -v
+```
+
+Fresh local acceptance passed all 119 tests (105 previous, 14 new), independently
+verified 93 ConvNeXt epochs and 16 saved prediction sets, and reproduced all
+three audit CSVs and the audit JSON exactly. All 332 source-file hashes remained
+unchanged. No real MRI images were read and no GPU jobs were launched.
+Patient-NLL retrospective minima for seeds 42/43/44 were epochs 4/1/30, compared
+with V1 slice-CE epoch 1 for all three. No patient probability required clipping.
+This is retrospective diagnosis, not replacement of V1 results. Candidate
+weights for changed epochs are unavailable locally; CSVs cannot reconstruct them.
+The audit's `candidate_weight_available` flag means the candidate is the already
+selected V1 epoch, not that this audit inspected the cluster checkpoint binary.
+CNN full-epoch predictions are unavailable, so CNN retrospective selection is
+not claimed.
+
+Next: a seed42 five-epoch full-finetuning versus frozen-backbone diagnostic,
+with matched initialization and all other settings, dual best checkpoints and
+per-epoch weights. Verify the full-finetuning N4 prefix and frozen-backbone
+invariants before deciding the V2 formal protocol. Eight GPU-hours was an initial
+estimate, not a fixed spending cap; earlier budget balances above are historical.
+
+AI usage disclosure (R1): AI assisted implementation and synthetic tests, reviewed
+code and evidence, reran local tests and independent calculations, updated project
+records and this README, and prepared the user-authorized commit. GPU/MRI
+integration of the new selection component has not yet been accepted.
