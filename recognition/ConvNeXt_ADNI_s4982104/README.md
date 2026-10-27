@@ -1794,3 +1794,27 @@ AI usage disclosure (R1): AI assisted implementation and synthetic tests, review
 code and evidence, reran local tests and independent calculations, updated project
 records and this README, and prepared the user-authorized commit. GPU/MRI
 integration of the new selection component has not yet been accepted.
+
+
+### R2 diagnostic preparation (27 October 2026)
+
+R2a–c are locally verified. See [R2 cluster guide](R2_CLUSTER_GUIDE.md) for
+upload, submission, result download and acceptance instructions. `run_r2.slurm`
+runs the complete test suite before the seed42 five-epoch F/H pair, preserves
+failure logs, snapshots sources and packages evidence without model weights.
+F updates all parameters; H updates only the final new Linear, with normalization
+and the backbone frozen. Both retain train mode and stochastic depth.
+
+The N4 prefix check now rejects missing, duplicate or misnumbered first-three
+epoch records as well as changed loss/order. Local acceptance passed 134 tests;
+three batch-wrapper tests were additionally rerun after refining their simulated
+failure stage. Shell syntax and diff checks passed. Tests exercise synthetic
+models and substitute processes; real ConvNeXt CUDA/N4 equality remains an R2d
+cluster acceptance requirement. No new GPU jobs or real MRI reads occurred here.
+
+AI usage disclosure (R2): AI assisted runner/test preparation, independent review,
+N4 comparison tests and epoch-sequence fix, batch script, evidence packaging,
+Chinese execution guide and progress updates. The test fixture was corrected so
+its intentional failure occurs during unittest, not pip freeze. An independent
+code review found no runtime blockers. The commit was authorized by the user;
+real experimental outcomes have not been claimed.

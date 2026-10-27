@@ -125,3 +125,10 @@ n2-slurm-*.err
 n5_summary.json
 n5_error.log
 *.pt.tmp
+
+# R2 diagnostic evidence remains private
+/r2_diagnostic*/
+/r2-slurm-*.out
+/r2-slurm-*.err
+r2_summary.json
+r2_error.log
