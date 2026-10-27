@@ -1818,3 +1818,41 @@ Chinese execution guide and progress updates. The test fixture was corrected so
 its intentional failure occurs during unittest, not pip freeze. An independent
 code review found no runtime blockers. The commit was authorized by the user;
 real experimental outcomes have not been claimed.
+
+
+### R3f: recall-constrained validation thresholds (28 October 2026)
+
+`run_r3_threshold.py` freezes the nine R3e patient-NLL checkpoints and their
+validation probabilities. It selects from unique patient probabilities plus zero,
+using p >= threshold for AD. Require recall >= 0.8 (36 of 44 AD patients), maximize
+NC specificity, then prefer the largest threshold on ties. The 0.5 main comparison
+is retained. R3e audited hashes anchor the prediction/selection records; changed
+inputs, switched epochs, duplicate model/seed identities and altered baselines
+are rejected. No training, model loading, calibration or MRI reads occur.
+
+```bash
+python run_r3_threshold.py  --main-csv /path/to/adni_manifest_local/r3e_main_comparison/nine_run_main.csv  --manifest /path/to/adni_manifest_local/split_seed42_60_20_20/split_samples.csv  --output-dir /path/to/a/new/r3f_output
+python -m unittest discover -s tests -v
+```
+
+Keep audit_summary.json beside the R3e main CSV. Its absolute paths and file
+hashes must remain valid; do not bypass provenance checks after moving evidence.
+Outputs include nine_thresholds.csv, model_mean_sample_sd.csv, all candidate
+thresholds, private per-patient decisions and threshold_summary.json. Store these
+outside Git. Use full-precision CSV/JSON thresholds, not rounded report values.
+
+All nine validation runs attained 36/44 AD detection (81.82%). At that recall,
+mean NC specificity was 71.01% for CNN-A, 67.75% for CNN-B, and 77.54% for
+ConvNeXt-F. Relative to its own 0.5 baseline, F detected 8 additional AD patients
+on average and falsely flagged 11.67 additional NC patients; mean accuracy changed
+from 81.62% to 78.92%. Counts are means over three runs on the same patients,
+not independent pooled patient counts. NLL, Brier and AUROC are unchanged.
+These are development-set threshold choices, not held-out test guarantees or a
+single deployment threshold. R4 must freeze calibration/referral and final
+threshold procedures before sealed-test evaluation.
+
+Local acceptance passed 170 tests, including 12 threshold/pipeline tests.
+Independent raw-patient-CSV enumeration agreed on all nine thresholds and
+confusion matrices. AI assisted implementation, tests, independent review and
+calculations, documentation and the authorized commit. Existing R3 training
+files awaiting their own commit are outside this change's scope.
