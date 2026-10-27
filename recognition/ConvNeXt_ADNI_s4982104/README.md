@@ -1856,3 +1856,33 @@ Independent raw-patient-CSV enumeration agreed on all nine thresholds and
 confusion matrices. AI assisted implementation, tests, independent review and
 calculations, documentation and the authorized commit. Existing R3 training
 files awaiting their own commit are outside this change's scope.
+
+
+### R4 unified inference efficiency (prepared; cluster measurement pending)
+
+See [R4_RUN_GUIDE.md](R4_RUN_GUIDE.md) for the exact protocol, submission command and return checklist. `run_r4_efficiency.py` measures all nine frozen patient-NLL primary checkpoints using `r4_frozen_bests.json`, one fresh process per checkpoint on the same A100, FP32/no TF32, batch 4 and native trained preprocessing. No training or test-image access occurs.
+
+Pure forward: 20 warmup calls, then five blocks of 100 calls on a resident GPU batch. End-to-end: one complete validation warmup followed by three timed passes, including JPEG reads, preprocessing, transfers, prediction and patient aggregation. Both synchronize timing boundaries. End-to-end results describe warm filesystem-cache throughput; per-patient values are cohort-amortized, not single-request latency. Model loading, auditing and output writes are excluded. Allocated/reserved peak GPU memory is reported separately for each mode.
+
+The runner verifies frozen source/checkpoint hashes, unchanged model state and agreement with R3 patient predictions. It writes raw repetitions, per-run results, three-seed means/sample SD and an audit summary. Real performance remains pending cluster evidence; local tests do not supply GPU speed measurements.
+
+AI assistance: Codex helped define timing defaults, implement the benchmark and tests, and draft the run/acceptance guide. No measured GPU results were fabricated. Canonical local progress records track verification and subsequent human/cluster acceptance.
+
+
+R4 follow-up: job 706801 stopped at CNN-A42 probability comparison. See [R4_DIAGNOSTIC_GUIDE.md](R4_DIAGNOSTIC_GUIDE.md) for the frozen-checkpoint batch/TF32 single-factor diagnostic and execution-mode bridge. It saves complete predictions and differences using unchanged R4 tolerances; completion means evidence collected, not numerical agreement or efficiency acceptance. No historical results are replaced.
+
+
+R4 V2 now implements the approved two-stage protocol. Each frozen checkpoint first replays the original R3 batch/backend settings under no_grad, with strict original-tolerance agreement against historical slice and patient predictions. Only then does the benchmark use common FP32/batch4/TF32-off settings. The unified warmup predictions become a separately named reference; their drift and classification/metric changes versus history remain explicit. Three timed passes must agree with that unified reference under the unchanged tolerance. Historical data are never replaced. See [R4_RUN_GUIDE.md](R4_RUN_GUIDE.md) for updated submission and return paths (`r4_efficiency_v2_JOBID`) and the per-model validation read count of 13604. AI assisted this implementation and test work; real GPU acceptance is pending.
+
+
+### R4 V2 accepted results (job 706895)
+
+All nine historical patient predictions reproduced exactly. Three timed unified-condition passes also matched their corresponding unified reference exactly. Independent checks covered 45 prediction sets and 210 output hashes; the cluster passed 199 tests. No test images were read. CNN probabilities drifted under TF32-off (maximum patient absolute difference 0.00006648), with no patient class changes at 0.5; ConvNeXt probabilities were unchanged. Historical R3 results remain intact.
+
+| Model | Forward ms/slice | End-to-end ms/slice | Amortized ms/patient | End-to-end peak allocated MiB |
+|---|---:|---:|---:|---:|
+| CNN-A | 0.10146 | 0.55739 | 11.1478 | 64.0293 |
+| CNN-B | 0.09600 | 0.55525 | 11.1050 | 64.0293 |
+| ConvNeXt-F | 1.23521 | 3.04627 | 60.9254 | 187.2495 |
+
+Values average the three seed-specific repetition medians on one A100, FP32, TF32 off, batch 4, native preprocessing and warmed filesystem cache. Patient time is cohort-amortized. Allocated memory is not total process GPU memory. Maximum within-run CV was 11.32% for short forward timing and 3.14% end-to-end; the small CNN-A/B difference does not establish a loss-weighting speed effect. Whole-job GPU usage was 420/3600 = 0.11667 hours, including tests and audits. Calibration, referral and final-test protocol decisions come next; the test set remains sealed. AI-assisted independent audit outputs and patient-level evidence stay in the private local project directory.
