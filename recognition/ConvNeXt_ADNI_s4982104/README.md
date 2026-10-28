@@ -1886,3 +1886,24 @@ All nine historical patient predictions reproduced exactly. Three timed unified-
 | ConvNeXt-F | 1.23521 | 3.04627 | 60.9254 | 187.2495 |
 
 Values average the three seed-specific repetition medians on one A100, FP32, TF32 off, batch 4, native preprocessing and warmed filesystem cache. Patient time is cohort-amortized. Allocated memory is not total process GPU memory. Maximum within-run CV was 11.32% for short forward timing and 3.14% end-to-end; the small CNN-A/B difference does not establish a loss-weighting speed effect. Whole-job GPU usage was 420/3600 = 0.11667 hours, including tests and audits. Calibration, referral and final-test protocol decisions come next; the test set remains sealed. AI-assisted independent audit outputs and patient-level evidence stay in the private local project directory.
+
+### R5a: equal-weight validation ensembles
+
+`run_r5_ensemble.py` audits job 706895's nine unified validation predictions,
+then averages seeds 42/43/44 within each model family after patient-ID alignment.
+See [R5_ENSEMBLE_GUIDE.md](R5_ENSEMBLE_GUIDE.md) for the local command and checks.
+Each ensemble contains 136 patients (44 AD, 92 NC); threshold is 0.5.
+
+| Ensemble | Accuracy | AD recall | NC recall | AUROC | NLL | Brier |
+|---|---:|---:|---:|---:|---:|---:|
+| CNN-A | 74.26% | 47.73% | 86.96% | 0.8137 | 0.4911 | 0.1631 |
+| CNN-B | 76.47% | 56.82% | 85.87% | 0.8110 | 0.4969 | 0.1647 |
+| ConvNeXt-F | 81.62% | 63.64% | 90.22% | 0.8908 | 0.3882 | 0.1257 |
+
+These are uncalibrated development-validation results. Independent recomputation
+from 60 slice probabilities per patient agrees within 1.12e-16; a separate
+metric implementation agrees within 1e-12. All 30 input and six output hashes
+were verified. Historical R3/R4 results and weights remain unchanged. No images
+were read and no GPU time was used. Next is patient-level temperature scaling;
+final test remains sealed. AI assisted implementation, tests and verification;
+private patient tables and detailed audit evidence are excluded from Git.
