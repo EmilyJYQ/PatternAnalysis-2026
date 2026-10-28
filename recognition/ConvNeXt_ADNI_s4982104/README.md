@@ -1907,3 +1907,24 @@ were verified. Historical R3/R4 results and weights remain unchanged. No images
 were read and no GPU time was used. Next is patient-level temperature scaling;
 final test remains sealed. AI assisted implementation, tests and verification;
 private patient tables and detailed audit evidence are excluded from Git.
+
+### R5b: patient confidence calibration
+
+`run_r5_temperature.py` fits one positive temperature per R5a ensemble on the
+136 validation patients. See [R5_TEMPERATURE_GUIDE.md](R5_TEMPERATURE_GUIDE.md).
+All three fits converged inside [0.05,20], without changing any 0.5 classifications.
+
+| Model | Temperature | NLL before → after | Brier before → after | Confidence ECE before → after |
+|---|---:|---:|---:|---:|
+| CNN-A | 0.812077 | 0.49114 → 0.48685 | 0.16308 → 0.16220 | 0.07319 → 0.04978 |
+| CNN-B | 0.803091 | 0.49686 → 0.49225 | 0.16471 → 0.16326 | 0.09103 → 0.07332 |
+| ConvNeXt-F | 1.277251 | 0.38817 → 0.37979 | 0.12573 → 0.12303 | 0.05263 → 0.04068 |
+
+ECE uses ten fixed equal-width confidence bins on [0,1], weighted by patient
+count. Empty bins are missing rather than zero. Fits and numerical outputs
+reproduce exactly; independent inverse-temperature derivative bisection agrees
+within 2.6e-8 in T. Probability reconstruction differs by at most 1.12e-16.
+These improvements are on the same development validation set used to fit T;
+independent generalization is not yet measured. No images were accessed, GPU
+usage was zero and final test remains sealed. AI assisted implementation,
+verification and documentation; detailed private evidence remains outside Git.
