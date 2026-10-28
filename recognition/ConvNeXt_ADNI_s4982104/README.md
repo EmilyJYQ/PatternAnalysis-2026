@@ -1928,3 +1928,23 @@ These improvements are on the same development validation set used to fit T;
 independent generalization is not yet measured. No images were accessed, GPU
 usage was zero and final test remains sealed. AI assisted implementation,
 verification and documentation; detailed private evidence remains outside Git.
+
+### R5c: supplemental AD recall >=80% threshold analysis
+
+`run_r5_threshold.py` applies the prespecified R3f selection rule to each R5b
+calibrated ensemble. Main threshold stays at 0.5. See
+[R5_THRESHOLD_GUIDE.md](R5_THRESHOLD_GUIDE.md) for execution and exact rules.
+
+| Model | Selected threshold (display) | AD recall | NC specificity | Accuracy | Fewer AD misses | Additional NC false alarms |
+|---|---:|---:|---:|---:|---:|---:|
+| CNN-A | 0.288932 | 81.82% | 66.30% | 71.32% | 15 | 19 |
+| CNN-B | 0.333587 | 81.82% | 70.65% | 74.26% | 11 | 14 |
+| ConvNeXt-F | 0.303211 | 81.82% | 77.17% | 78.68% | 8 | 12 |
+
+All three detect 36 of 44 validation AD patients. Full-precision thresholds are
+stored in the private JSON/CSV evidence; do not use the rounded display values.
+Independent enumeration verified all 411 candidates, selection rules, confusion
+counts and per-patient decisions. Five input hashes, four code hashes and seven
+output hashes passed; seven numerical files reproduced exactly. No image reads
+or GPU use occurred. This is a validation sensitivity analysis, not a guarantee
+of final-test sensitivity. AI assisted implementation and independent auditing.
