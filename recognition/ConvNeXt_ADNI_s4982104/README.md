@@ -1948,3 +1948,24 @@ counts and per-patient decisions. Five input hashes, four code hashes and seven
 output hashes passed; seven numerical files reproduced exactly. No image reads
 or GPU use occurred. This is a validation sensitivity analysis, not a guarantee
 of final-test sensitivity. AI assisted implementation and independent auditing.
+
+### R5d: batch referral at the main 0.5 threshold
+
+`run_r5_referral.py` ranks raw ensemble distance from 0.5 without labels, with
+patient-ID tie-breaking. The fixed primary 10% rule refers 14/136 patients.
+See [R5_REFERRAL_GUIDE.md](R5_REFERRAL_GUIDE.md) for execution and denominators.
+
+| Model | Errors captured / all errors | AD misses captured / all misses | Remaining errors / 122 retained | Remaining AD misses |
+|---|---:|---:|---:|---:|
+| CNN-A | 6/35 (17.14%) | 2/23 | 29/122 (23.77%) | 21 |
+| CNN-B | 6/32 (18.75%) | 4/19 | 26/122 (21.31%) | 15 |
+| ConvNeXt-F | 6/25 (24.00%) | 2/16 | 19/122 (15.57%) | 14 |
+
+All three referred groups contain six errors and eight correct predictions.
+Referral captures some errors but leaves most AD misses for automatic handling.
+These are observed errors in a simulation, not errors proven corrected by a
+human. Full-cohort main scores remain unchanged. Fixed 0/5/10/20% results are
+saved separately; R5c supplemental thresholds are not combined with this analysis.
+Independent audit verifies all counts and flags; no images or GPU were used.
+AI assisted implementation, testing, auditing and documentation. Final test
+remains sealed pending R5e protocol freeze.
