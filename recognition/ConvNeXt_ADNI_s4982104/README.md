@@ -1969,3 +1969,12 @@ saved separately; R5c supplemental thresholds are not combined with this analysi
 Independent audit verifies all counts and flags; no images or GPU were used.
 AI assisted implementation, testing, auditing and documentation. Final test
 remains sealed pending R5e protocol freeze.
+
+### R5e: frozen final-test protocol
+
+R5e is implemented and rehearsed with synthetic patients. See
+[R5_FINAL_PROTOCOL_GUIDE.md](R5_FINAL_PROTOCOL_GUIDE.md) for the frozen rules,
+verification command, outputs and next R6a implementation requirements. The real
+final-test images have not been opened. The committed protocol includes the nine
+checkpoint identities, fixed temperatures/thresholds and shared patient-bootstrap
+rules; actual checkpoint bytes must be verified on the cluster before inference.
