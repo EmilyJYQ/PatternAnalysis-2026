@@ -50,6 +50,10 @@ All three families used the same patient split and seeds 42, 43, and 44. The nin
 
 For patient-sampling uncertainty, 2,000 AD/CN-stratified bootstrap resamples used one shared index set (seed 42) for intervals and paired model differences. These intervals condition on the trained models and chosen protocol. The standard deviation across three training seeds measures a separate source of variation.
 
+![Training and validation loss over 30 epochs for the seed-42 runs](figures/training_curves.png)
+
+*Figure 2. Top: slice-level unweighted cross-entropy; bottom: validation patient-level macro-F1 over the 30-epoch seed-42 runs for CNN-A, CNN-B, and fully fine-tuned ConvNeXt-F. The two loss curves share an axis within each model panel; loss panels have separate vertical scales. ConvNeXt training loss approaches zero while validation loss rises, indicating overfitting in this run, although its patient macro-F1 remains around 0.75. Checkpoints were selected by validation patient-level NLL, not by the final training epoch. Source: frozen R3 epoch logs; aggregate plot data and plotting code are in `figures/`.*
+
 ## Held-out test results
 
 The primary operating point is the validation-frozen threshold of 0.5. Probabilistic metrics below use calibrated ensemble scores. `TP/FN/TN/FP` treats AD as positive.
@@ -121,7 +125,7 @@ This experiment uses one seeded scan per patient and 44 AD test patients. It doe
 
 ## Reproduction and repository contents
 
-The mandatory files are `modules.py` (model components), `dataset.py` (loading and patient splits), `train.py` (training and checkpointing), `predict.py` (saved-weight inference), and this `README.md`. Additional scripts implement manifest creation, audits, three-seed experiments, calibration, referral analysis, resource profiling, and the frozen final evaluation. The Git commit history records progressive development; specialized run guides are alongside the code.
+The mandatory files are `modules.py` (model components), `dataset.py` (loading and patient splits), `train.py` (baseline CNN training and checkpointing), `predict.py` (a saved-weight CNN validation inference example), and this `README.md`. The final ConvNeXt training entry point is `run_r3_convnext.py`; the final nine-checkpoint **test** inference and evaluation entry point is `run_r6_final.py`. The latter loads saved CNN and ConvNeXt weights, predicts the test cases, and writes slice predictions, patient predictions, aggregate metrics, and a verification summary. This separation preserves the code and protocol hashes used for the reported final test. Additional scripts implement manifest creation, audits, three-seed experiments, calibration, referral analysis, and resource profiling. The Git commit history records progressive development; specialized run guides are alongside the code.
 
 The recorded Rangpur environment for the final evaluation was Python 3.11.13, PyTorch 2.14.0+cu130, TorchVision 0.29.0, NumPy 2.4.6, Pillow 12.3.0, Matplotlib 3.11.2, CUDA 13.0, and an NVIDIA A100-PCIE-40GB. Exact Python dependency pins are in [requirements.txt](requirements.txt). On a supported host, create an environment and run the synthetic and regression tests:
 
@@ -145,7 +149,15 @@ An example single-checkpoint invocation, after obtaining the private split files
   --device cuda
 ```
 
-The output contains slice predictions, patient predictions, and a prediction summary. The patient table is the example output used for the reported AD/CN decisions; it stays outside Git because it contains patient-level records.
+The command above is the CNN validation example. It accepts the input split manifest (`split_samples.csv`), its audit summary, a saved checkpoint, and the matching training summary; it writes `slice_predictions.csv`, `patient_predictions.csv`, and `prediction_summary.json`. The final test command, using the private R5 source/checkpoint tree described in the [R6 run guide](R6_FINAL_RUN_GUIDE.md), is:
+
+```bash
+.venv/bin/python run_r6_final.py \
+  --data-root /path/to/authorized_private_r5_tree \
+  --output-dir /path/to/new_final_test_output
+```
+
+Its output includes `evaluation.json`, `metrics.csv`, and nine model-specific `slice_predictions.csv` files; the aggregate patient results are in `patient_tables/`. For a concrete anonymized **ConvNeXt-F ensemble** output example from the frozen test, `confident_AD_miss_01` had ground truth AD (`label=1`), calibrated `P(AD)=0.012636`, primary predicted class CN (`prediction=0`), and `refer_10_percent=0`. Thus a confident false negative was not sent to the 10% review queue. The alias and numbers are copied from the private case index; patient and scan identifiers are omitted. Individual patient tables, MRI images, and weights stay outside Git.
 
 ## Artificial Intelligence Usage Disclosure
 
