@@ -21,6 +21,7 @@ from run_r5_ensemble import require, sha
 
 ROOT=Path(__file__).resolve().parent
 PROTOCOL_SHA='96b492906327273f8379d2e532434f57fe1b77a99ebc8b9151918ec9bc521fa8'
+FROZEN_SOURCE_COMMIT='0967d26e4c23dbfbd513c496f69aae540f57af0b'
 
 
 def safe_path(root,relative):
@@ -40,7 +41,18 @@ def write_csv(path,rows):
 
 
 def preflight(root):
-    protocol=load_protocol(ROOT/'r5_final_protocol.json',PROTOCOL_SHA,ROOT)
+    # Missing private inputs should be reported before any source-version check.
+    manifest_path = Path(root) / 'split_seed42_60_20_20/split_samples.csv'
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f'Missing private test manifest: {manifest_path}')
+    try:
+        protocol=load_protocol(ROOT/'r5_final_protocol.json',PROTOCOL_SHA,ROOT)
+    except ValueError as exc:
+        if 'Code SHA mismatch:' not in str(exc):
+            raise
+        raise RuntimeError(
+            'Frozen test protocol requires source commit ' + FROZEN_SOURCE_COMMIT +
+            '; check out that commit for exact replay of the reported result') from exc
     for name,expected in protocol['split_files_sha256'].items():
         require(sha(safe_path(root,name))==expected,'Split hash mismatch: '+name)
     manifest=safe_path(root,'split_seed42_60_20_20/split_samples.csv')

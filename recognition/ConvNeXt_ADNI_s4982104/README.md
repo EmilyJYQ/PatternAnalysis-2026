@@ -125,7 +125,7 @@ This experiment uses one seeded scan per patient and 44 AD test patients. It doe
 
 ## Reproduction and repository contents
 
-The mandatory files are `modules.py` (model components), `dataset.py` (loading and patient splits), `train.py` (baseline CNN training and checkpointing), `predict.py` (a saved-weight CNN validation inference example), and this `README.md`. The final ConvNeXt training entry point is `run_r3_convnext.py`; the final nine-checkpoint **test** inference and evaluation entry point is `run_r6_final.py`. The latter loads saved CNN and ConvNeXt weights, predicts the test cases, and writes slice predictions, patient predictions, aggregate metrics, and a verification summary. This separation preserves the code and protocol hashes used for the reported final test. Additional scripts implement manifest creation, audits, three-seed experiments, calibration, referral analysis, and resource profiling. The Git commit history records progressive development; specialized run guides are alongside the code.
+The five required files are `modules.py` (CNN and ConvNeXt components), `dataset.py` (loading, patient-safe split entry point, and optional train-only intensity augmentation), `train.py` (CNN training, formal ConvNeXt training entry point, test-inference entry point, checkpoint saving, and epoch-curve plotting), `predict.py` (saved-weight CNN or ConvNeXt test-case inference and aggregate confusion visualisation), and this `README.md`. The original experiment runners remain in `run_r3_convnext.py` and `run_r6_final.py`. The latter loads nine saved CNN/ConvNeXt checkpoints, predicts the test cases, and writes slice predictions, patient predictions, aggregate metrics, and a verification summary. The optional brightness augmentation defaults to off and was **not** used for the reported experiment. Additional scripts implement manifest creation, audits, calibration, referral analysis, and resource profiling.
 
 The recorded Rangpur environment for the final evaluation was Python 3.11.13, PyTorch 2.14.0+cu130, TorchVision 0.29.0, NumPy 2.4.6, Pillow 12.3.0, Matplotlib 3.11.2, CUDA 13.0, and an NVIDIA A100-PCIE-40GB. Exact Python dependency pins are in [requirements.txt](requirements.txt). On a supported host, create an environment and run the synthetic and regression tests:
 
@@ -135,21 +135,23 @@ python3.11 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -q
 ```
 
-For a saved model, `predict.py` requires a model checkpoint, split manifest, and output directory; run `.venv/bin/python predict.py --help` for the exact arguments. The frozen nine-model final evaluation is driven by `run_r6_final.py` and `run_r6_final.slurm`; the [R6 run guide](R6_FINAL_RUN_GUIDE.md) explains the fixed source, checkpoint, and evidence checks. Dataset manifests, patient-level predictions, raw MRI, and model weights are excluded from Git. Recreating the reported final results requires the same authorized ADNI data, selected-scan and split manifests, and nine hash-verified checkpoints. The saved evidence records hashes for input files, checkpoints, code, and output tables.
+For the course-facing entry points, run `.venv/bin/python train.py --formal-convnext --help` to see the formal training inputs, `.venv/bin/python train.py --plot-history --history /path/to/epochs.jsonl --plot-output /path/to/learning_curves.png` to plot recorded losses and validation macro-F1, and `.venv/bin/python predict.py --test-mode --help` for saved-weight test inference. `train.py --test-mode` exposes that same test-inference path. The frozen nine-model final evaluation is driven by `run_r6_final.py` and `run_r6_final.slurm`; the [R6 run guide](R6_FINAL_RUN_GUIDE.md) explains its source, checkpoint, and evidence checks. Dataset manifests, patient-level predictions, raw MRI, and model weights are excluded from Git.
 
-An example single-checkpoint invocation, after obtaining the private split files and trained weight through authorized access, is:
+**Frozen result provenance:** The reported 80.88% result was generated with source commit `0967d26e4c23dbfbd513c496f69aae540f57af0b`, before the three course-facing entry points were expanded. The unchanged `r5_final_protocol.json` contains hashes of that version. To reproduce the exact reported run, check out that commit and use the same authorized ADNI data, split manifests, and nine hash-verified checkpoints. The new entry points are demonstrations and were not used to generate or tune the reported test result. The saved evidence records hashes for inputs, checkpoints, code, and output tables.
+
+For a standalone **test-set** example using one saved ConvNeXt checkpoint and the private split manifest, run:
 
 ```bash
-.venv/bin/python predict.py \
+.venv/bin/python predict.py --test-mode \
   --manifest /path/to/split_samples.csv \
   --summary /path/to/split_summary.json \
   --checkpoint /path/to/best_patient_nll.pt \
-  --training-summary /path/to/training_summary.json \
-  --output-dir /path/to/new_prediction_output \
+  --model convnext_tiny \
+  --output-dir /path/to/new_test_example_output \
   --device cuda
 ```
 
-The command above is the CNN validation example. It accepts the input split manifest (`split_samples.csv`), its audit summary, a saved checkpoint, and the matching training summary; it writes `slice_predictions.csv`, `patient_predictions.csv`, and `prediction_summary.json`. The final test command, using the private R5 source/checkpoint tree described in the [R6 run guide](R6_FINAL_RUN_GUIDE.md), is:
+This writes slice/patient prediction CSVs, `test_prediction_summary.json`, and an aggregate `confusion_matrix.png`. It demonstrates one checkpoint and does not replace the calibrated three-seed ensemble result. The frozen nine-model final test command is:
 
 ```bash
 .venv/bin/python run_r6_final.py \

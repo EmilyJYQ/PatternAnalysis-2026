@@ -1,4 +1,4 @@
-"""C3 validation-only predictions and patient mean-probability aggregation."""
+"""Saved-weight ADNI inference: legacy CNN validation and test-case examples."""
 import argparse
 from collections import defaultdict
 import csv
@@ -8,12 +8,13 @@ import math
 import os
 from pathlib import Path
 import platform
+import sys
 import time
 import traceback
 import PIL
 import torch
-from dataset import PREPROCESSING
-from modules import SimpleCNN
+from dataset import PREPROCESSING, ConvNeXtSliceDataset
+from modules import SimpleCNN, build_model
 from train import CountedDataset, classification_metrics, write_json
 from check_dataloader import make_loader, require, sha256, code_version
 
@@ -146,7 +147,78 @@ def run_prediction(manifest, summary, checkpoint_path, training_summary_path, ou
     return result
 
 
+def run_test_prediction(manifest, summary, checkpoint_path, output_dir, model_name,
+                        device='cpu', batch_size=4, expected_slices=20):
+    """Demonstrate saved-weight inference on test cases, with patient-level output.
+
+    This standalone example does not refit a threshold or replace the nine-model
+    frozen evaluation in run_r6_final.py. Individual output rows remain private.
+    """
+    if model_name not in ('simple_cnn', 'convnext_tiny'):
+        raise ValueError('Unknown model name')
+    require(device in ('cpu', 'cuda') and (device != 'cuda' or torch.cuda.is_available()),
+            'Invalid or unavailable device')
+    require(batch_size > 0 and expected_slices > 0, 'Invalid batch size or slice count')
+    checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
+    expected_model = 'SimpleCNN' if model_name == 'simple_cnn' else 'convnext_tiny'
+    if checkpoint.get('config', {}).get('model') != expected_model:
+        raise ValueError('Checkpoint model does not match requested model')
+    model = build_model(model_name, num_classes=2)
+    model.load_state_dict(checkpoint['model_state_dict'], strict=True)
+    dataset = (CountedDataset if model_name == 'simple_cnn' else ConvNeXtSliceDataset)(
+        manifest, 'test', summary)
+    model = model.to(device)
+    rows = predict_pass(model, make_loader(dataset, batch_size, 42), device)
+    require(dataset.read_calls == len(dataset) == len(rows), 'Incomplete test inference')
+    patients = aggregate_patients(rows, expected_slices)
+    metrics = classification_metrics([r['label'] for r in patients],
+                                     [r['p_ad'] for r in patients])
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=False)
+    write_csv(out / 'slice_predictions.csv', rows)
+    write_csv(out / 'patient_predictions.csv', patients)
+    # The figure contains aggregate counts only; case identifiers remain in the CSVs.
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(3.2, 2.9))
+    ax.imshow(metrics['confusion_matrix'], cmap='Blues', vmin=0)
+    ax.set(xticks=(0, 1), yticks=(0, 1), xticklabels=('CN', 'AD'),
+           yticklabels=('CN', 'AD'), xlabel='Predicted', ylabel='Ground truth',
+           title='Test patients')
+    for truth in (0, 1):
+        for prediction in (0, 1):
+            ax.text(prediction, truth, str(metrics['confusion_matrix'][truth][prediction]),
+                    ha='center', va='center')
+    fig.tight_layout()
+    fig.savefig(out / 'confusion_matrix.png', dpi=180)
+    plt.close(fig)
+    result = dict(status='passed', split='test', model=model_name,
+                  checkpoint_sha256=sha256(checkpoint_path),
+                  manifest_sha256=sha256(manifest), image_reads=dataset.read_calls,
+                  slice_count=len(rows), patient_count=len(patients),
+                  expected_slices=expected_slices, patient_metrics=metrics,
+                  output_files=['slice_predictions.csv', 'patient_predictions.csv',
+                                'confusion_matrix.png'])
+    write_json(out / 'test_prediction_summary.json', result)
+    return result
+
+
 def main():
+    if '--test-mode' in sys.argv[1:]:
+        parser = argparse.ArgumentParser(description='Saved-checkpoint test inference example')
+        parser.add_argument('--test-mode', action='store_true', required=True)
+        for name in ('manifest', 'summary', 'checkpoint', 'output-dir'):
+            parser.add_argument('--' + name, type=Path, required=True)
+        parser.add_argument('--model', choices=('simple_cnn', 'convnext_tiny'), required=True)
+        parser.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
+        parser.add_argument('--batch-size', type=int, default=4)
+        parser.add_argument('--expected-slices', type=int, default=20)
+        args = parser.parse_args()
+        run_test_prediction(args.manifest, args.summary, args.checkpoint,
+                            args.output_dir, args.model, args.device,
+                            args.batch_size, args.expected_slices)
+        return
     parser=argparse.ArgumentParser(description=__doc__)
     for name in ('manifest','summary','checkpoint','training-summary','output-dir'):
         parser.add_argument('--'+name,type=Path,required=True)

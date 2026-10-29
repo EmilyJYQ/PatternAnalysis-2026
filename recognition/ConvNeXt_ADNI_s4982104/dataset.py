@@ -156,3 +156,23 @@ class ConvNeXtSliceDataset(ADNISliceDataset):
         return dict(image=convnext_transform(self.read_gray(index)),
                     label=torch.tensor(LABEL_MAP[row['label']],dtype=torch.long),
                     **{key:row[key] for key in ('patient_id','image_id','file_path')})
+
+
+def split_by_patient(selected_scans, selected_samples):
+    """Expose the audited fixed-seed, leakage-free split from the data module."""
+    from split_patients import build
+    return build(selected_scans, selected_samples)
+
+
+class AugmentedTrainingDataset(ADNISliceDataset):
+    """Optional mild brightness augmentation for training; unused in frozen runs."""
+    def __init__(self, manifest_path, split='train', summary_path=None):
+        if split != 'train':
+            raise ValueError('Intensity augmentation is training only')
+        super().__init__(manifest_path, split, summary_path)
+
+    def __getitem__(self, index):
+        item = super().__getitem__(index)
+        gain = 0.9 + 0.2 * torch.rand(()).item()
+        item['image'] = (item['image'] * gain).clamp(0, 1)
+        return item

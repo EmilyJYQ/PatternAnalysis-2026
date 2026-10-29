@@ -1,4 +1,4 @@
-"""C2 full-epoch CNN pilot; validation selects checkpoints, test pixels untouched."""
+"""ADNI training and evaluation entry points; baseline run stays validation-only."""
 import argparse
 import copy
 import hashlib
@@ -272,7 +272,64 @@ def run_training(manifest, summary, output_dir, device='cuda', epochs=3,
     return result
 
 
+def plot_recorded_history(history_path, output_path):
+    """Plot observed epoch losses and validation patient macro-F1 when available."""
+    rows = [json.loads(line) for line in Path(history_path).read_text().splitlines() if line.strip()]
+    require(bool(rows) and [r['epoch'] for r in rows] == list(range(1, len(rows)+1)),
+            'History must contain consecutive epochs from one')
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    epochs = [r['epoch'] for r in rows]
+    fig, axes = plt.subplots(1, 2, figsize=(8.0, 3.0))
+    axes[0].plot(epochs, [r['train']['unweighted_loss'] for r in rows], label='Train')
+    axes[0].plot(epochs, [r['validation']['loss'] for r in rows], label='Validation')
+    axes[0].set(xlabel='Epoch', ylabel='Slice cross-entropy', title='Loss')
+    axes[0].legend(frameon=False)
+    if all('patient_metrics' in r and 'macro_f1' in r['patient_metrics'] for r in rows):
+        axes[1].plot(epochs, [r['patient_metrics']['macro_f1'] for r in rows], color='#4B8268')
+        axes[1].set(xlabel='Epoch', ylabel='Macro-F1', title='Validation patients', ylim=(0, 1))
+    else:
+        axes[1].plot(epochs, [r['validation']['macro_f1'] for r in rows], color='#4B8268')
+        axes[1].set(xlabel='Epoch', ylabel='Macro-F1', title='Validation slices', ylim=(0, 1))
+    for ax in axes:
+        ax.grid(alpha=.2)
+        ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def main():
+    if '--test-mode' in sys.argv[1:]:
+        from predict import main as prediction_main
+        prediction_main()
+        return
+    if '--plot-history' in sys.argv[1:]:
+        parser = argparse.ArgumentParser(description='Plot saved training/validation history')
+        parser.add_argument('--plot-history', action='store_true', required=True)
+        parser.add_argument('--history', type=Path, required=True)
+        parser.add_argument('--plot-output', type=Path, required=True)
+        args = parser.parse_args()
+        plot_recorded_history(args.history, args.plot_output)
+        return
+    if '--formal-convnext' in sys.argv[1:]:
+        parser = argparse.ArgumentParser(description='Train the formal ConvNeXt model')
+        parser.add_argument('--formal-convnext', action='store_true', required=True)
+        for name in ('manifest', 'summary', 'weights', 'weights-summary',
+                     'output-dir', 'n5-reference'):
+            parser.add_argument('--' + name, type=Path, required=True)
+        parser.add_argument('--r2-reference', type=Path)
+        parser.add_argument('--seed', type=int, choices=(42, 43, 44), default=42)
+        parser.add_argument('--device', choices=('cpu', 'cuda'), default='cuda')
+        args = parser.parse_args()
+        from run_r3_convnext import run_formal
+        run_formal(args.manifest, args.summary, args.weights, args.weights_summary,
+                   args.output_dir, args.device, args.seed,
+                   n5_reference=args.n5_reference, r2_reference=args.r2_reference)
+        plot_recorded_history(args.output_dir / 'epochs.jsonl',
+                              args.output_dir / 'learning_curves.png')
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--manifest', type=Path, required=True)
     parser.add_argument('--summary', type=Path, required=True)
@@ -287,6 +344,8 @@ def main():
     run_training(args.manifest, args.summary, args.output_dir, args.device, args.epochs,
                  args.batch_size, args.learning_rate, args.seed,
                  expected_lengths={'train':8160,'validation':2720,'test':2720}, class_weighting=args.class_weighting)
+    plot_recorded_history(args.output_dir / 'epochs.jsonl',
+                          args.output_dir / 'learning_curves.png')
 
 
 if __name__ == '__main__': main()
