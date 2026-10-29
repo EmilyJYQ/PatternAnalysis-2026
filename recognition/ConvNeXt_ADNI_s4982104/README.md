@@ -1,6 +1,6 @@
 # ADNI MRI classification: ConvNeXt and CNN baselines
 
-**COMP3710 individual pattern-recognition project · s4982104**
+**COMP3710 individual pattern-recognition project · Yuqing Jiang · s4982104**
 
 ## Executive summary
 
@@ -20,7 +20,7 @@ For a patient, each model predicts an AD probability for each of 20 slices. We a
 
 ## Feasibility review and tutor check-off
 
-The following is the one-page written feasibility review prepared for the compulsory consultation on **23 October 2026**. The tutor asked about project progress and gave no specific requested changes. It records the proposal and preliminary evidence as they stood at the midpoint; the completed experiment and revised resource findings appear in the later sections.
+The one-page written feasibility review was used at the compulsory consultation on **23 October 2026**. Its four required parts are included below. The tutor asked about project progress and gave no specific requested changes. This section records the proposal and preliminary evidence as they stood at the midpoint; the completed experiment and revised resource findings appear later in this report.
 
 ### User need, scope, and acceptance criteria
 
