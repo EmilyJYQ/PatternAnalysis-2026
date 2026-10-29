@@ -36,7 +36,7 @@ The original train/test folders shared 216 patients. A fixed seed-42 selection r
 
 ### Risks, budget, and fallback
 
-Class imbalance and a small AD cohort could make accuracy misleading. The plan therefore included class metrics, fixed validation roles, patient-level probability aggregation, and a sealed test set. The initial allocation was 8 GPU-hours: 1 for debugging, 2 for CNN, 3 for ConvNeXt, and 2 for repeats/evaluation. Jobs were planned to remain below two hours, with short debugging jobs and checkpoints. If memory exceeded 20 GB, batch size would be reduced; if runtime exceeded the estimate, tuning would be narrowed while preserving one complete baseline comparison. Human referral was treated as a request for review, not as an assumed correction.
+Class imbalance and a small AD cohort could make accuracy misleading. The plan therefore included class metrics, fixed validation roles, patient-level probability aggregation, and a sealed test set. The initial allocation was 8 GPU-hours: 1 for debugging, 2 for CNN, 3 for ConvNeXt, and 2 for repeats/evaluation. Jobs were planned to remain below two hours, with short debugging jobs and checkpoints. If memory exceeded 20 GB, batch size would be reduced; if runtime exceeded the estimate, tuning would be narrowed while preserving one complete baseline comparison. Human referral was treated as a request for review, not as an assumed correction. The next planned experiment at the review stage was the C0c DataLoader batch check, followed by a CNN training and prediction smoke test measuring peak memory and step time.
 
 ## Data and leakage control
 
